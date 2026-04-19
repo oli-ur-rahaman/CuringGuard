@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { LayoutDashboard, Map, Users, Settings, Menu, Bell, HardHat, X } from 'lucide-react';
+import { LayoutDashboard, Map, Users, Settings, Menu, Bell, HardHat, X, FolderGit2 } from 'lucide-react';
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const navItems = [
     { name: 'Dashboard', path: '/', icon: LayoutDashboard },
+    { name: 'Project Hierarchy', path: '/setup', icon: FolderGit2 },
     { name: 'PDF Plans & Canvas', path: '/plans', icon: Map },
-    { name: 'Contractors', path: '/contractors', icon: Users },
+    { name: 'Contractor Mgmt', path: '/contractors', icon: Users },
     { name: 'Settings', path: '/settings', icon: Settings },
   ];
 

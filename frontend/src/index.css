@@ -1,1 +1,37 @@
 @import "tailwindcss";
+
+/* 
+ * Global custom scrollbar logic 
+ * Mimics macOS micro-tracking to prevent Windows blocky scrollbars
+ * from ruining multi-column layout aesthetics.
+ */
+@layer base {
+  ::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+  
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.3); /* slate-400 slightly faded */
+    border-radius: 20px;
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(100, 116, 139, 0.6); /* slate-500 */
+  }
+}
+
+/* Hard utilities for areas that should never show scrollbars */
+@layer utilities {
+  .no-scrollbar {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;     /* Firefox */
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
