@@ -1,0 +1,17 @@
+{
+    "terminal.integrated.defaultProfile.windows": "Command Prompt",
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.codeActionsOnSave": {
+        "source.fixAll.eslint": "explicit"
+    },
+    "antigravity.agent.terminal.alwaysAllow": [
+        "npm",
+        "npx",
+        "git",
+        "mkdir"
+    ],
+    "antigravity.agent.browser.enabled": true,
+    "antigravity.agent.browser.headless": false,
+    "antigravity.workspace.indexing.enabled": true
+}
