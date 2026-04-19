@@ -3,7 +3,7 @@ import { AlertCircle, CheckCircle2, Clock } from 'lucide-react';
 
 export default function Dashboard() {
   return (
-    <div className="space-y-6">
+    <div className="p-8 max-w-7xl mx-auto h-full overflow-y-auto space-y-6">
       <div>
         <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Project Overview</h1>
         <p className="text-slate-500 mt-2">Active Curing Monitoring for Phase 1 Substructure</p>
