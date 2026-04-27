@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from typing import List, Optional
 
 from backend.app.core.database import get_db
@@ -20,7 +21,13 @@ def get_users(role: str = None, db: Session = Depends(get_db), current_user: Use
     return query.all()
 
 @router.post("/", response_model=UserResponse)
-def create_user(user: UserCreate, db: Session = Depends(get_db)):
+def create_user(user: UserCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if current_user.role != UserRole.SUPERADMIN:
+        raise HTTPException(status_code=403, detail="Unauthorized to create users.")
+    existing_user = db.query(User).filter(User.email == user.email).first()
+    if existing_user:
+        raise HTTPException(status_code=400, detail="User with this email already exists.")
+
     db_user = User(
         username=user.username,
         email=user.email,
@@ -28,19 +35,24 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)):
         hashed_password=get_password_hash(user.password),
         role=user.role,
         mobile_number=user.mobile_number,
-        is_active=user.is_active
+        is_active=1
     )
     db.add(db_user)
     try:
         db.commit()
         db.refresh(db_user)
+    except IntegrityError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="A user with this email already exists.")
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=f"User creation failed: {str(e)}")
     return db_user
 
+from fastapi import Body
+
 @router.patch("/{user_id}", response_model=UserResponse)
-def update_user(user_id: int, user_data: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def update_user(user_id: int, user_data: dict = Body(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     if current_user.role != UserRole.SUPERADMIN and current_user.id != user_id:
         raise HTTPException(status_code=403, detail="Forbidden")
     

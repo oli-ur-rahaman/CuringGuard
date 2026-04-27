@@ -33,13 +33,17 @@ app.add_middleware(
 )
 
 from backend.app.core.database import engine, Base
-from backend.app.routers import auth, hierarchy
+from backend.app.routers import auth, hierarchy, users, curing, library, gateways
 
 # Initialize all database tables
 Base.metadata.create_all(bind=engine)
 
 app.include_router(auth.router)
 app.include_router(hierarchy.router)
+app.include_router(users.router)
+app.include_router(curing.router)
+app.include_router(library.router)
+app.include_router(gateways.router)
 
 @app.get("/")
 def health_check():

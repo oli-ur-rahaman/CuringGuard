@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, Enum, ForeignKey
+from sqlalchemy import Column, Integer, String, Enum, ForeignKey, DateTime
+from sqlalchemy.sql import func
 from sqlalchemy.orm import validates
 from backend.app.core.database import Base
 import enum
@@ -14,16 +15,17 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(255), unique=True, index=True, nullable=False)
-    email = Column(String(255), nullable=True, default="superadmin@curingguard.com")
+    email = Column(String(255), unique=True, nullable=True, default="superadmin@curingguard.com")
     hashed_password = Column(String(255), nullable=False)
     role = Column(Enum(UserRole), nullable=False)
     is_active = Column(Integer, default=1) # 1 for active, 0 for suspended
     
     # The crucial 11-digit mobile number for SMS dispatch
-    mobile_number = Column(String(11), unique=True, nullable=False)
+    mobile_number = Column(String(11), nullable=False)
     
-    # Belongs to a Tenant silo (Contractors and Monitors both map here)
-    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=True)
+    full_name = Column(String(255), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     @validates("mobile_number")
     def validate_mobile_number(self, key, mobile_number):

@@ -25,8 +25,9 @@ This document outlines the overarching sequence of how we are constructing this 
 ## ✅ Phase 3: The Data Hierarchy & Database Setup
 **Status: COMPLETED**
 **Goal:** Build the strict structural rules separating Monitors, Projects, and Contractors.
+*   [x] Restructure Identity Management: Flattened the `User` table to remove the siloing `tenant_id` constraint, using a global identity model.
 *   [x] Create Frontend interfaces for Monitor Management (`Superadmin.tsx`, `ProjectSetup.tsx`).
-*   [x] Create backend database models (`Tenant > Project > Package > Structure > Drawing`).
+*   [x] Create backend database models (`Monitor > Project > Package > Structure > Drawing`).
 *   [x] Built the `GeometryElement` table (`curing.py`) to connect parsed vectors to Contractors.
 *   [x] **CRITICAL:** Enforced strict 11-digit `mobile_number` field requirement for SMS routing.
 *   [x] Physically created testing and synchronization script `test_db.py`.

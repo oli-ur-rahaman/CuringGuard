@@ -1,5 +1,31 @@
 @import "tailwindcss";
 
+@theme {
+  /* Primary Dark Blue (#0047B8) mapped to blue */
+  --color-blue-50: #eff6ff;
+  --color-blue-100: #dceafe;
+  --color-blue-200: #b0d0fd;
+  --color-blue-300: #7badfb;
+  --color-blue-400: #4281f6;
+  --color-blue-500: #1b5ded;
+  --color-blue-600: #0047b8;
+  --color-blue-700: #003794;
+  --color-blue-800: #002e7a;
+  --color-blue-900: #002766;
+
+  /* Primary Cyan/Teal (#019AA7) mapped to amber */
+  --color-amber-50: #f0fcfa;
+  --color-amber-100: #cbf7f1;
+  --color-amber-200: #98efe3;
+  --color-amber-300: #5cdfd2;
+  --color-amber-400: #2cc2b7;
+  --color-amber-500: #019aa7;
+  --color-amber-600: #007c8a;
+  --color-amber-700: #006370;
+  --color-amber-800: #004d58;
+  --color-amber-900: #00404a;
+}
+
 /* 
  * Global custom scrollbar logic 
  * Mimics macOS micro-tracking to prevent Windows blocky scrollbars
