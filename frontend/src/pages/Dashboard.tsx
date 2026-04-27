@@ -1,67 +1,148 @@
-import React from 'react';
-import { AlertCircle, CheckCircle2, Clock } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { AlertCircle, CheckCircle2, Clock, Loader2, Send } from 'lucide-react';
+import { curingService, userService } from '../services/api';
 
 export default function Dashboard() {
+  const [elements, setElements] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const data = await curingService.getElements();
+        setElements(data);
+      } catch (error) {
+        console.error("Failed to fetch elements", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="w-12 h-12 text-blue-600 animate-spin" />
+          <p className="text-slate-500 font-medium">Loading Field Data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const now = new Date();
+  
+  const activeCuring = elements.filter(el => 
+    el.poured_date && new Date(el.curing_end_date) > now
+  );
+
+  const completed = elements.filter(el => 
+    el.poured_date && new Date(el.curing_end_date) <= now
+  );
+
+  const actionRequired = activeCuring.filter(el => {
+    const endDate = new Date(el.curing_end_date);
+    const diff = endDate.getTime() - now.getTime();
+    return diff < (1000 * 60 * 60 * 24 * 2); // Within 48 hours for warning
+  });
+
+  const handlePing = async (contractorId: number, elementId: string) => {
+    try {
+      await userService.pingUser(contractorId, `URGENT: Curing monitor for ${elementId} requires immediate attention.`);
+      alert("Ping notification sent via Green Heritage IT SMS.");
+    } catch (error) {
+      alert("Failed to send notification.");
+    }
+  };
+
   return (
     <div className="p-8 max-w-7xl mx-auto h-full overflow-y-auto space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Project Overview</h1>
-        <p className="text-slate-500 mt-2">Active Curing Monitoring for Phase 1 Substructure</p>
+      <div className="flex justify-between items-end">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Project Overview</h1>
+          <p className="text-slate-500 mt-2">Active Curing Monitoring for Phase 1 Substructure</p>
+        </div>
+        <div className="text-right">
+          <p className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Sync Status</p>
+          <div className="flex items-center gap-2 text-green-600 font-medium">
+            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+            Live from Field
+          </div>
+        </div>
       </div>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm flex items-start">
+        <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm flex items-start transition-all hover:shadow-md">
           <div className="p-3 rounded-lg bg-blue-50 text-blue-600">
             <Clock className="w-8 h-8" />
           </div>
           <div className="ml-4">
             <p className="text-sm font-medium text-slate-500">Active Curing Elements</p>
-            <p className="text-3xl font-bold text-slate-900 mt-1">42</p>
+            <p className="text-3xl font-bold text-slate-900 mt-1">{activeCuring.length}</p>
           </div>
         </div>
         
-        <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm flex items-start">
+        <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm flex items-start transition-all hover:shadow-md">
           <div className="p-3 rounded-lg bg-green-50 text-green-600">
-            <CheckCircle2 className="w-8 h-8" />
+            <span className="flex items-center justify-center"><CheckCircle2 className="w-8 h-8" /></span>
           </div>
           <div className="ml-4">
             <p className="text-sm font-medium text-slate-500">Completed Elements</p>
-            <p className="text-3xl font-bold text-slate-900 mt-1">108</p>
+            <p className="text-3xl font-bold text-slate-900 mt-1">{completed.length}</p>
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-red-200 p-6 shadow-sm flex items-start ring-1 ring-red-100">
-          <div className="p-3 rounded-lg bg-red-50 text-red-600">
+        <div className={`bg-white rounded-xl border p-6 shadow-sm flex items-start transition-all hover:shadow-md ${actionRequired.length > 0 ? 'border-red-200 ring-1 ring-red-100' : 'border-slate-200'}`}>
+          <div className={`p-3 rounded-lg ${actionRequired.length > 0 ? 'bg-red-50 text-red-600' : 'bg-slate-50 text-slate-400'}`}>
             <AlertCircle className="w-8 h-8" />
           </div>
           <div className="ml-4">
-            <p className="text-sm font-medium text-red-600">Requires Action Today</p>
-            <p className="text-3xl font-bold text-red-700 mt-1">5</p>
+            <p className={`text-sm font-medium ${actionRequired.length > 0 ? 'text-red-600' : 'text-slate-500'}`}>Requires Action Soon</p>
+            <p className={`text-3xl font-bold mt-1 ${actionRequired.length > 0 ? 'text-red-700' : 'text-slate-900'}`}>{actionRequired.length}</p>
           </div>
         </div>
       </div>
 
       {/* Needs Attention Panel */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="px-6 py-5 border-b border-slate-200 bg-slate-50">
-          <h3 className="text-lg font-semibold text-slate-900">Today's Curing Needs</h3>
+        <div className="px-6 py-5 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
+          <h3 className="text-lg font-semibold text-slate-900">Critical Curing Elements</h3>
+          <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-700 uppercase">Field Tracking</span>
         </div>
         <div className="divide-y divide-slate-200">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="px-6 py-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
-              <div className="flex items-center gap-4">
-                <div className="w-2 h-2 rounded-full bg-amber-500"></div>
-                <div>
-                  <p className="font-medium text-slate-900">Wall Grid {i}A - {i}B (Level 2)</p>
-                  <p className="text-sm text-slate-500 mt-1">Day {7 - i} of 7 required</p>
-                </div>
-              </div>
-              <button className="px-4 py-2 text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-md shadow-sm transition-colors">
-                Ping Contractor
-              </button>
+          {actionRequired.length === 0 ? (
+            <div className="px-6 py-12 text-center text-slate-500 italic">
+              No critical curing actions required at this time.
             </div>
-          ))}
+          ) : (
+            actionRequired.map((el) => {
+              const endDate = new Date(el.curing_end_date);
+              const daysLeft = Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+              
+              return (
+                <div key={el.element_id} className="px-6 py-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
+                  <div className="flex items-center gap-4">
+                    <div className={`w-3 h-3 rounded-full ${daysLeft <= 1 ? 'bg-red-500' : 'bg-amber-500'}`}></div>
+                    <div>
+                      <p className="font-medium text-slate-900">{el.element_type} - {el.element_id}</p>
+                      <p className="text-sm text-slate-500 mt-1">
+                        Ends on {endDate.toLocaleDateString()} ({daysLeft} day{daysLeft !== 1 ? 's' : ''} remaining)
+                      </p>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => handlePing(el.contractor_id, el.element_id)}
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-lg shadow-md transition-all active:scale-95"
+                  >
+                    <Send className="w-4 h-4" />
+                    Ping Contractor
+                  </button>
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
     </div>

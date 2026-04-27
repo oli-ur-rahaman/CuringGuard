@@ -7,6 +7,7 @@ class Tenant(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), unique=True, index=True, nullable=False)
     subdomain = Column(String(255), unique=True, index=True)
+    is_active = Column(Integer, default=1) # 1 for active, 0 for suspended
 
 class Project(Base):
     __tablename__ = "projects"

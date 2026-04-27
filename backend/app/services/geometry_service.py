@@ -131,3 +131,78 @@ class GeometryService:
             "message": "The canvas contains raw unstructured data. Triggering Frontend manual crop tool.",
             "pages": [{"name": "Raw Modelspace", "entity_count": total_entities, "method": "Tier 3: Infinite Canvas"}]
         }
+    @classmethod
+    def extract_elements(cls, dxf_path: str, target_layers: list = ["WALL", "Column", "STAIR"]):
+        """
+        Parses a DXF and returns normalized structural elements.
+        """
+        try:
+            doc = ezdxf.readfile(dxf_path)
+            msp = doc.modelspace()
+            
+            # 1. Get Global Bounding Box for Normalization
+            from ezdxf import bbox
+            cache = bbox.Cache()
+            overall_bbox = bbox.extents(msp, cache=cache)
+            min_x, min_y, _ = overall_bbox.extmin
+            max_x, max_y, _ = overall_bbox.extmax
+            
+            width = max_x - min_x if max_x > min_x else 1
+            height = max_y - min_y if max_y > min_y else 1
+            
+            elements = []
+            
+            # 2. Extract Text Labels for Proximity Search
+            labels = []
+            for text in msp.query('TEXT MTEXT'):
+                content = text.dxf.text if hasattr(text.dxf, 'text') else "LABEL"
+                # Strip RTF/MTEXT formatting if present
+                if hasattr(text, 'plain_text'):
+                    content = text.plain_text()
+                
+                labels.append({
+                    "content": content,
+                    "point": text.dxf.insert
+                })
+            
+            # 3. Extract Polylines from Target Layers
+            for layer in target_layers:
+                polylines = msp.query(f'LWPOLYLINE[layer=="{layer}"]')
+                for pl in polylines:
+                    # Normalize vertices to 0-1000 scale
+                    vertices = []
+                    sum_x = 0
+                    sum_y = 0
+                    for v in pl.get_points():
+                        nx = (v[0] - min_x) / width * 1000
+                        ny = (v[1] - min_y) / height * 1000
+                        vertices.append([nx, ny])
+                        sum_x += v[0]
+                        sum_y += v[1]
+                    
+                    centroid = (sum_x / len(vertices), sum_y / len(vertices))
+                    
+                    # 4. Find nearest label
+                    nearest_label = "UNNAMED"
+                    min_dist = float('inf')
+                    for label in labels:
+                        dist = ((centroid[0] - label["point"][0])**2 + (centroid[1] - label["point"][1])**2)**0.5
+                        if dist < min_dist:
+                            min_dist = dist
+                            nearest_label = label["content"]
+                    
+                    # Only keep label if it's reasonably close (heuristic)
+                    if min_dist > 500: # drawing units
+                        nearest_label = f"{layer}-{len(elements)}"
+
+                    elements.append({
+                        "element_id": nearest_label,
+                        "element_type": layer,
+                        "vertices": vertices
+                    })
+            
+            return elements
+
+        except Exception as e:
+            print(f"Extraction Error: {e}")
+            return []

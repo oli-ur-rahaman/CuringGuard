@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   MousePointer2, Square, Slash, MapPin, Type, Hand,
   ZoomIn, ZoomOut, Layers, LayoutGrid, CheckSquare, 
   ChevronRight, ChevronLeft, Plus, Image as ImageIcon,
-  FolderOpen, FileText, ChevronDown, X
+  FolderOpen, FileText, ChevronDown, X, Loader2, Send,
+  Ruler
 } from 'lucide-react';
+import { curingService, userService } from '../services/api';
 
 export default function Plans() {
   const [activeTool, setActiveTool] = useState('select');
@@ -12,6 +14,7 @@ export default function Plans() {
   const [treeOpen, setTreeOpen] = useState(false);
   const [activePage, setActivePage] = useState(1);
   const [showGroupModal, setShowGroupModal] = useState(false);
+  const [loading, setLoading] = useState(true);
   
   // Pan and Zoom physics logic
   const [scale, setScale] = useState(1);
@@ -19,51 +22,87 @@ export default function Plans() {
   const [isPanning, setIsPanning] = useState(false);
   const [startPan, setStartPan] = useState({ x: 0, y: 0 });
 
-  const [initialPinchDistance, setInitialPinchDistance] = useState<number | null>(null);
-  const [initialScale, setInitialScale] = useState(1);
-  const [pinchCenter, setPinchCenter] = useState({ x: 0, y: 0 });
+  const [elements, setElements] = useState<any[]>([]);
+  const [contractors, setContractors] = useState<any[]>([]);
+  const [selectedContractor, setSelectedContractor] = useState<number>(0);
+
+  // Calibration State
+  const [isCalibrating, setIsCalibrating] = useState(false);
+  const [calibrationPoints, setCalibrationPoints] = useState<{x: number, y: number}[]>([]);
+  const [metersPerUnit, setMetersPerUnit] = useState(1);
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const [elData, conData] = await Promise.all([
+        curingService.getElements(),
+        userService.getUsers(1, 'contractor')
+      ]);
+      
+      setElements(elData.map((el: any) => ({
+        ...el,
+        id: el.element_id,
+        type: el.element_type,
+        status: el.poured_date ? 'Curing' : 'Unassigned',
+        selected: false,
+        vertices: el.coordinates_json ? JSON.parse(el.coordinates_json) : []
+      })));
+      setContractors(conData);
+    } catch (error) {
+      console.error("Failed to load plans data", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
 
   const tools = [
     { id: 'select', icon: MousePointer2, label: 'Select' },
     { id: 'pan', icon: Hand, label: 'Pan' },
+    { id: 'calibrate', icon: Ruler, label: 'Calibrate Scale' },
     { id: 'rect', icon: Square, label: 'Surface' },
     { id: 'line', icon: Slash, label: 'Line' },
     { id: 'point', icon: MapPin, label: 'Point' },
-    { id: 'text', icon: Type, label: 'Text' },
   ];
-
-  // Make Elements Stateful for Grouping Logic
-  const [elements, setElements] = useState([
-    { id: 'W-01', type: 'Wall', status: 'Unassigned', selected: false },
-    { id: 'W-02', type: 'Wall', status: 'Unassigned', selected: false },
-    { id: 'C-5A', type: 'Column', status: 'Unassigned', selected: false },
-    { id: 'S-1A', type: 'Slab', status: 'Grouped', selected: false }
-  ]);
   
-  const mockPages = [ { id: 1, type: 'pdf', label: 'Pg 1' }, { id: 2, type: 'pdf', label: 'Pg 2' }, { id: 3, type: 'blank', label: 'Custom' } ];
-
-  // Grouping Logic Derivations
-  const selectedElements = elements.filter(e => e.selected);
-  const selectedType = selectedElements.length > 0 ? selectedElements[0].type : null;
-
   const toggleElement = (id: string) => {
     setElements(prev => prev.map(el => {
       if (el.id === id) {
-        if (el.status === 'Grouped') return el;
-        if (selectedType && selectedType !== el.type && !el.selected) return el; // Strict Type Constraint!
+        if (el.status === 'Curing') return el;
+        const selectedElements = prev.filter(e => e.selected);
+        const selectedType = selectedElements.length > 0 ? selectedElements[0].type : null;
+        if (selectedType && selectedType !== el.type && !el.selected) return el;
         return { ...el, selected: !el.selected };
       }
       return el;
     }));
   };
 
-  const handleGroupSave = () => {
-    setElements(prev => prev.map(e => e.selected ? {...e, status: 'Grouped', selected: false} : e));
-    setShowGroupModal(false);
+  const handleGroupSave = async () => {
+    if (!selectedContractor) {
+      alert("Please select a contractor to assign.");
+      return;
+    }
+    const selectedElements = elements.filter(e => e.selected);
+    try {
+      setLoading(true);
+      for (const el of selectedElements) {
+        await curingService.logCuring(el.id, selectedContractor);
+      }
+      setShowGroupModal(false);
+      fetchData();
+    } catch (error) {
+      alert("Failed to initialize curing engine for selection.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const executeZoom = (targetScale: number, pointerX: number, pointerY: number) => {
-    const newScale = Math.max(0.1, Math.min(targetScale, 5));
+    const newScale = Math.max(0.05, Math.min(targetScale, 10));
     const mouseX = (pointerX - position.x) / scale;
     const mouseY = (pointerY - position.y) / scale;
     const newX = pointerX - (mouseX * newScale);
@@ -79,6 +118,29 @@ export default function Plans() {
   };
 
   const handlePointerDown = (e: React.PointerEvent) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = (e.clientX - rect.left - position.x) / scale;
+    const y = (e.clientY - rect.top - position.y) / scale;
+
+    if (activeTool === 'calibrate') {
+      if (calibrationPoints.length < 2) {
+        setCalibrationPoints(prev => [...prev, {x, y}]);
+        if (calibrationPoints.length === 1) {
+          const m = prompt("Enter the real-world distance in METERS for this line:");
+          if (m) {
+            const p1 = calibrationPoints[0];
+            const p2 = {x, y};
+            const dist = Math.sqrt((p1.x - p2.x)**2 + (p1.y - p2.y)**2);
+            setMetersPerUnit(parseFloat(m) / dist);
+            alert(`Scale calibrated: 1 unit = ${(parseFloat(m) / dist).toFixed(4)} meters.`);
+          }
+          setCalibrationPoints([]);
+          setActiveTool('select');
+        }
+      }
+      return;
+    }
+
     if (e.pointerType === 'mouse') {
       if (e.button === 1 || activeTool === 'pan') {
         setIsPanning(true);
@@ -86,269 +148,235 @@ export default function Plans() {
       }
     }
   };
+
   const handlePointerMove = (e: React.PointerEvent) => {
     if (isPanning && e.pointerType === 'mouse') {
       setPosition({ x: e.clientX - startPan.x, y: e.clientY - startPan.y });
     }
   };
+
   const handlePointerUp = (e: React.PointerEvent) => {
     if (e.pointerType === 'mouse') setIsPanning(false);
   };
 
-  const handleExternalZoom = (factor: number) => {
-    executeZoom(scale * factor, window.innerWidth / 2, window.innerHeight / 2);
-  };
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const getPinchDistance = (e: React.TouchEvent) => Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-  const handleTouchStart = (e: React.TouchEvent) => {
-    if (e.touches.length === 2) {
-      setInitialPinchDistance(getPinchDistance(e));
-      setInitialScale(scale);
-      setIsPanning(false);
-      
-      const rect = e.currentTarget.getBoundingClientRect();
-      const cx = ((e.touches[0].clientX + e.touches[1].clientX) / 2) - rect.left;
-      const cy = ((e.touches[0].clientY + e.touches[1].clientY) / 2) - rect.top;
-      setPinchCenter({ x: cx, y: cy });
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('structure_id', '1'); // Assuming Structure ID 1 for this demo
+    formData.append('name', file.name);
 
-    } else if (e.touches.length === 1) {
-      setIsPanning(true);
-      setStartPan({ x: e.touches[0].clientX - position.x, y: e.touches[0].clientY - position.y });
+    try {
+      setUploading(true);
+      await curingService.uploadDrawing(formData);
+      alert("Drawing uploaded and parsed successfully!");
+      fetchData(); // Refresh elements
+    } catch (error) {
+      alert("Failed to upload/parse drawing.");
+    } finally {
+      setUploading(false);
+      setTreeOpen(false);
     }
-  };
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (e.touches.length === 2 && initialPinchDistance !== null) {
-      const zoomFactor = getPinchDistance(e) / initialPinchDistance;
-      const targetScale = initialScale * zoomFactor;
-      
-      const newScale = Math.max(0.1, Math.min(targetScale, 5));
-      const mouseX = (pinchCenter.x - position.x) / scale;
-      const mouseY = (pinchCenter.y - position.y) / scale;
-      
-      const newX = pinchCenter.x - (mouseX * newScale);
-      const newY = pinchCenter.y - (mouseY * newScale);
-      
-      setScale(newScale);
-      setPosition({ x: newX, y: newY });
-      
-    } else if (e.touches.length === 1 && isPanning) {
-      setPosition({ x: e.touches[0].clientX - startPan.x, y: e.touches[0].clientY - startPan.y });
-    }
-  };
-
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    setIsPanning(false);
-    setInitialPinchDistance(null);
   };
 
   return (
     <div 
-      className={`absolute inset-0 bg-[#e5e7eb] font-sans overflow-hidden ${isPanning || activeTool === 'pan' ? 'cursor-grab active:cursor-grabbing' : 'cursor-crosshair'}`}
+      className={`absolute inset-0 bg-slate-900 font-sans overflow-hidden ${isPanning || activeTool === 'pan' ? 'cursor-grab active:cursor-grabbing' : 'cursor-crosshair'}`}
       onWheel={handleWheel}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerLeave={handlePointerUp}
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
       onContextMenu={(e) => e.preventDefault()}
       style={{ touchAction: "none" }}
     >
-      {/* 1. PAN & ZOOM WRAPPER */}
+      {/* CANVAS CONTENT */}
       <div 
-        className="absolute inset-0 origin-top-left pointer-events-none"
+        className="absolute inset-0 origin-top-left"
         style={{ transform: `translate(${position.x}px, ${position.y}px) scale(${scale})` }}
       >
-          <div className="absolute w-[1000vw] h-[1000vh] -left-[500vw] -top-[500vh] opacity-40" 
-               style={{ backgroundImage: 'radial-gradient(#94a3b8 2px, transparent 2px)', backgroundSize: '50px 50px' }}>
+          {/* Grid Background */}
+          <div className="absolute w-[20000px] h-[20000px] -left-[10000px] -top-[10000px] opacity-20" 
+               style={{ backgroundImage: 'radial-gradient(#94a3b8 1px, transparent 1px)', backgroundSize: '40px 40px' }}>
           </div>
 
-          <div className="absolute top-[10vh] left-[10vw] w-[80vw] h-[80vh] bg-white shadow-2xl border border-slate-300 pointer-events-auto transition-transform duration-300">
-             <div className="absolute -top-6 left-0 md:-top-10 text-slate-700 font-mono text-[10px] md:text-lg font-bold tracking-tight bg-white/50 px-2 rounded-t-md">
-               {activePage === 3 ? '✏️ Blank Drawing' : `📄 Architectural_Base.pdf - basement1`}
-             </div>
-
-             {activePage === 1 && (
-               <>
-                 <div className="absolute top-[20%] left-[30%] w-[10%] min-w-16 h-[50%] border-[2px] border-blue-500 bg-blue-500/10 flex items-center justify-center text-blue-700 md:text-xl font-bold cursor-pointer">W-01</div>
-                 <div className="absolute bottom-[20%] right-[20%] w-[40%] min-w-32 h-[30%] border-[4px] border-amber-500 bg-amber-500/20 flex flex-col items-center justify-center text-amber-900 font-bold shadow-xl cursor-pointer">
-                   S-1A
-                   <span className="text-[10px] md:text-lg font-bold text-amber-800 bg-amber-200 px-2 md:px-4 py-1 rounded-full mt-1">Grouped</span>
-                 </div>
-               </>
-             )}
-          </div>
+          {/* SVG Vector Layer */}
+          <svg width="2000" height="2000" viewBox="0 0 1000 1000" className="absolute overflow-visible pointer-events-none">
+            {elements.map((el) => (
+              <g key={el.id} className="pointer-events-auto cursor-pointer" onClick={() => toggleElement(el.id)}>
+                <polygon 
+                  points={el.vertices.map((v: any) => `${v[0]},${v[1]}`).join(' ')}
+                  className={`transition-all duration-300 ${
+                    el.status === 'Curing' 
+                      ? 'fill-amber-500/30 stroke-amber-500 stroke-[2]' 
+                      : el.selected 
+                        ? 'fill-blue-600/40 stroke-blue-600 stroke-[3]' 
+                        : 'fill-slate-700/10 stroke-slate-500 stroke-[1] hover:fill-slate-700/20'
+                  }`}
+                />
+                {/* Scale-Independent Label */}
+                <foreignObject 
+                  x={el.vertices[0][0] - 50} 
+                  y={el.vertices[0][1] - 10} 
+                  width="100" 
+                  height="20"
+                  className="overflow-visible"
+                >
+                  <div 
+                    style={{ transform: `scale(${1/scale})`, transformOrigin: 'center' }}
+                    className={`flex items-center justify-center whitespace-nowrap px-1 rounded-sm text-[8px] font-black uppercase tracking-tighter shadow-sm border ${
+                      el.status === 'Curing' ? 'bg-amber-500 text-slate-900 border-amber-600' : 
+                      el.selected ? 'bg-blue-600 text-white border-blue-700' : 'bg-slate-800 text-slate-300 border-slate-700'
+                    }`}
+                  >
+                    {el.id}
+                  </div>
+                </foreignObject>
+              </g>
+            ))}
+            
+            {/* Calibration Line Preview */}
+            {calibrationPoints.length === 1 && (
+               <line x1={calibrationPoints[0].x} y1={calibrationPoints[0].y} x2={calibrationPoints[0].x} y2={calibrationPoints[0].y} stroke="red" strokeWidth={2/scale} strokeDasharray="4 4" />
+            )}
+          </svg>
       </div>
 
-      {/* 2. RESPONSIVE UI OVERLAYS */}
-
-      {/* FLOATING LEFT TOOLBAR */}
-      <div className="absolute left-2 md:left-6 top-4 md:top-1/2 md:-translate-y-1/2 flex md:flex-col gap-2 z-10 w-[calc(100%-1rem)] md:w-auto overflow-x-auto no-scrollbar pointer-events-none">
-        <div className="bg-white/95 backdrop-blur-md shadow-2xl border border-slate-300 rounded-2xl flex md:flex-col p-2 gap-2 flex-shrink-0 pointer-events-auto">
+      {/* TOOLBAR */}
+      <div className="absolute left-6 top-1/2 -translate-y-1/2 flex flex-col gap-2 z-10 pointer-events-none">
+        <div className="bg-slate-950/80 backdrop-blur-xl shadow-2xl border border-slate-800 rounded-3xl flex flex-col p-2.5 gap-3 pointer-events-auto">
          {tools.map(t => (
             <button key={t.id} onClick={() => setActiveTool(t.id)} title={t.label}
-              className={`p-2.5 md:p-3 rounded-xl transition-all ${activeTool === t.id ? 'bg-amber-500 text-white shadow-md' : 'text-slate-600 hover:bg-slate-100'}`}>
-              <t.icon className="w-5 h-5 md:w-6 md:h-6" />
+              className={`p-3.5 rounded-2xl transition-all ${activeTool === t.id ? 'bg-blue-600 text-white shadow-[0_0_20px_rgba(37,99,235,0.4)]' : 'text-slate-500 hover:text-white hover:bg-slate-800'}`}>
+              <t.icon className="w-6 h-6" />
             </button>
          ))}
-         <div className="w-px h-auto md:w-full md:h-px bg-slate-200 my-1 mx-1 md:mx-0" />
-         
-         <button onClick={() => setTreeOpen(true)} className={`p-2.5 md:p-3 text-slate-600 rounded-xl transition-all ${treeOpen ? 'bg-indigo-500 text-white shadow-md' : 'hover:bg-slate-100 bg-indigo-50 text-indigo-600'}`}><FolderOpen className="w-5 h-5 md:w-6 md:h-6" /></button>
-         <button onClick={() => handleExternalZoom(1.5)} className="p-2.5 md:p-3 text-slate-600 hover:bg-slate-100 rounded-xl"><ZoomIn className="w-5 h-5 md:w-6 md:h-6" /></button>
-         <button onClick={() => handleExternalZoom(0.6)} className="p-2.5 md:p-3 text-slate-600 hover:bg-slate-100 rounded-xl"><ZoomOut className="w-5 h-5 md:w-6 md:h-6" /></button>
         </div>
       </div>
 
-      {/* BOTTOM PAGE SLIDER */}
-      <div className="absolute bottom-4 md:bottom-6 left-1/2 -translate-x-1/2 bg-white/95 backdrop-blur-md shadow-2xl border border-slate-300 rounded-2xl p-2 md:p-2.5 flex items-center gap-3 md:gap-5 z-10 h-20 md:h-24 max-w-[95vw] overflow-hidden">
-         <div className="flex gap-2 md:gap-3 overflow-x-auto overflow-y-hidden px-1 md:px-2 py-2 items-center no-scrollbar">
-           {mockPages.map(page => (
-             <button key={page.id} onClick={() => setActivePage(page.id)}
-               className={`flex flex-col items-center justify-center min-w-[56px] min-h-[56px] md:min-w-[64px] md:min-h-[64px] rounded-xl border-2 transition-all hover:scale-105 active:scale-95 shadow-sm ${activePage === page.id ? 'border-amber-500 bg-amber-50' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
-               {page.type === 'pdf' ? <ImageIcon className="w-4 h-4 md:w-6 md:h-6 text-slate-500 mb-1" /> : <Square className="w-4 h-4 md:w-6 md:h-6 text-slate-500 mb-1" />}
-               <span className="text-[9px] md:text-[10px] font-bold text-slate-700 uppercase tracking-tight">{page.label}</span>
-             </button>
-           ))}
-         </div>
-         <div className="w-px h-10 md:h-12 bg-slate-300" />
-         <button className="flex flex-col items-center justify-center min-w-20 md:min-w-28 h-14 md:h-16 rounded-xl border-2 border-slate-800 bg-slate-900 shadow-md text-white px-2" onClick={() => setActivePage(3)}>
-           <Plus className="w-4 h-4 md:w-6 md:h-6 text-amber-500" />
-           <span className="text-[8px] md:text-[10px] font-bold uppercase text-center leading-tight">Blank Dwg</span>
-         </button>
-      </div>
-
+      {/* EXPLORER TOGGLE */}
       {/* LEFT EXPLORER DRAWER */}
-      <div className={`absolute top-0 left-0 h-full w-[85vw] max-w-sm bg-white/95 backdrop-blur-md border-r border-slate-300 shadow-[20px_0_40px_rgba(0,0,0,0.15)] transition-transform duration-[400ms] ease-in-out z-30 flex flex-col ${treeOpen ? 'translate-x-0' : '-translate-x-[105%]'}`}>
-         <button onClick={() => setTreeOpen(!treeOpen)} className="absolute top-1/2 -right-10 md:-right-12 -translate-y-1/2 bg-slate-900 border border-slate-800 border-l-0 shadow-lg p-2 md:p-3 rounded-r-xl hover:bg-slate-800 text-white" >
-            {treeOpen ? <ChevronLeft className="w-5 h-5 md:w-6 md:h-6 text-amber-500" /> : <ChevronRight className="w-5 h-5 md:w-6 md:h-6 text-amber-500" />}
-         </button>
-         
-         <div className="p-4 md:p-6 border-b border-slate-200 bg-slate-50 relative">
-            <p className="text-[10px] md:text-xs text-slate-500 font-extrabold uppercase tracking-widest mb-2 flex items-center justify-between">
-              Active Structure Target
-            </p>
-            <div className="relative">
-              <select className="appearance-none w-full bg-white border-2 border-slate-200 text-slate-900 font-extrabold text-sm md:text-base rounded-xl py-3 pl-4 pr-10 hover:border-slate-300 focus:outline-none focus:border-blue-500 transition-all cursor-pointer shadow-sm truncate">
-                <option value="1">Main Raft Foundation</option>
-                <option value="2">Basement Parking Walls</option>
-                <option value="3">South Tower Core</option>
-              </select>
-              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3"><ChevronDown className="w-5 h-5 text-slate-400" /></div>
+      <div className={`absolute top-0 left-0 h-full w-[350px] bg-slate-950/95 backdrop-blur-2xl border-r border-slate-800 shadow-[20px_0_40px_rgba(0,0,0,0.5)] transition-transform duration-500 ease-in-out z-30 flex flex-col ${treeOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+         <div className="p-8 border-b border-slate-800">
+            <div className="flex items-center justify-between">
+              <h2 className="text-2xl font-black text-white tracking-tight">Plan Manager</h2>
+              <button onClick={() => setTreeOpen(false)} className="text-slate-500 hover:text-white transition-colors"><X className="w-6 h-6" /></button>
             </div>
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              onChange={handleFileUpload} 
+              className="hidden" 
+              accept=".dwg,.dxf"
+            />
+            <button 
+              onClick={() => fileInputRef.current?.click()}
+              className="w-full mt-6 py-4 bg-blue-600/10 border-2 border-dashed border-blue-600/30 rounded-2xl flex items-center justify-center gap-3 text-blue-500 font-black text-sm hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all active:scale-95">
+              {uploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Plus className="w-5 h-5" /> ADD NEW PLAN</>}
+            </button>
          </div>
          
-         <div className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar">
-             {/* PDF Document 1 */}
-             <div className="border-2 border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm transition-all hover:border-blue-300">
-                <div className="p-3 md:p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between font-extrabold text-xs md:text-sm text-slate-800 cursor-pointer">
-                   <div className="flex items-center gap-3"><ImageIcon className="w-4 h-4 md:w-5 md:h-5 text-blue-500" /> Architectural_Base.pdf</div>
-                   <ChevronDown className="w-4 h-4 text-slate-400" />
+         <div className="flex-1 overflow-y-auto p-6 space-y-4 no-scrollbar">
+             <div className="border border-slate-800 rounded-[1.5rem] overflow-hidden bg-slate-900/50">
+                <div className="p-4 bg-slate-900 border-b border-slate-800 flex items-center justify-between font-black text-xs text-slate-400">
+                   <div className="flex items-center gap-2"><ImageIcon className="w-4 h-4 text-blue-500" /> ACTIVE DRAWINGS</div>
                 </div>
-                <div className="p-2 space-y-1 bg-white">
-                   {['Pg 1: basement1', 'Pg 2: level2'].map((p, idx) => (
-                     <div key={p} onClick={() => setActivePage(idx + 1)} className={`flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer text-xs font-bold transition-colors ${activePage === idx + 1 ? 'bg-blue-100 text-blue-800 border border-blue-200 shadow-sm' : 'text-slate-600 hover:bg-slate-50 border border-transparent'}`}>
-                        <div className="flex items-center gap-2.5"><FileText className="w-3 h-3 md:w-4 md:h-4 text-slate-400" /> {p}</div>
-                        {activePage === idx + 1 && <span className="text-[8px] bg-blue-200 px-1.5 py-0.5 rounded-sm uppercase tracking-widest font-extrabold">Viewing</span>}
-                     </div>
-                   ))}
+                <div className="p-2 space-y-1">
+                   <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-blue-600/20 text-blue-400 border border-blue-500/30 font-black text-xs">
+                      <div className="flex items-center gap-3"><FileText className="w-4 h-4" /> hostel_mugda.dxf</div>
+                      <span className="text-[10px] bg-blue-500/20 px-2 py-0.5 rounded-full">ACTIVE</span>
+                   </div>
                 </div>
              </div>
-
-             <button className="w-full mt-6 flex items-center justify-center gap-2 py-4 bg-white border-2 border-dashed border-slate-400 rounded-xl text-slate-600 font-bold hover:bg-slate-50 hover:border-blue-400 hover:text-blue-600 transition-all text-xs md:text-sm active:scale-[0.98] shadow-sm">
-                <Plus className="w-5 h-5 flex-shrink-0" /> <span className="truncate">Upload Drawing PDF</span>
-             </button>
          </div>
       </div>
 
-      {/* RIGHT PROPERTIES PANEL -> CONTRACTOR GROUPING SYSTEM */}
-      <div className={`absolute top-0 right-0 h-full w-[85vw] max-w-sm bg-white/95 backdrop-blur-md border-l border-slate-300 shadow-[-20px_0_40px_rgba(0,0,0,0.15)] transition-transform duration-[400ms] ease-in-out z-20 flex flex-col ${rightPanelOpen ? 'translate-x-0' : 'translate-x-[105%]'}`}>
-         <button onClick={() => setRightPanelOpen(!rightPanelOpen)} className="absolute top-1/2 -left-10 md:-left-12 -translate-y-1/2 bg-slate-900 border border-slate-800 border-r-0 shadow-lg p-2 md:p-3 rounded-l-xl hover:bg-slate-800 text-white" >
-            {rightPanelOpen ? <ChevronRight className="w-5 h-5 md:w-6 md:h-6 text-amber-500" /> : <ChevronLeft className="w-5 h-5 md:w-6 md:h-6 text-amber-500" />}
-         </button>
+      <button onClick={() => setTreeOpen(!treeOpen)} className="absolute top-6 left-6 z-20 p-3 bg-slate-950 text-white rounded-2xl border border-slate-800 shadow-xl hover:bg-slate-900 transition-all flex items-center gap-2 font-bold text-sm">
+        <FolderOpen className="w-5 h-5 text-blue-500" />
+        Drawing Explorer
+      </button>
+
+      {/* RIGHT PANEL TOGGLE */}
+      <button onClick={() => setRightPanelOpen(!rightPanelOpen)} className="absolute top-6 right-6 z-20 p-3 bg-slate-950 text-white rounded-2xl border border-slate-800 shadow-xl hover:bg-slate-900 transition-all flex items-center gap-2 font-bold text-sm">
+        <LayoutGrid className="w-5 h-5 text-amber-500" />
+        Selection ({elements.filter(e => e.selected).length})
+      </button>
+
+      {/* RIGHT DRAWER */}
+      <div className={`absolute top-0 right-0 h-full w-[400px] bg-slate-950/95 backdrop-blur-2xl border-l border-slate-800 shadow-[-20px_0_40px_rgba(0,0,0,0.5)] transition-transform duration-500 ease-in-out z-30 flex flex-col ${rightPanelOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+         <div className="p-8 border-b border-slate-800">
+            <div className="flex items-center justify-between">
+              <h3 className="font-black text-2xl text-white tracking-tight">Grouping Engine</h3>
+              <button onClick={() => setRightPanelOpen(false)} className="text-slate-500 hover:text-white transition-colors"><X className="w-6 h-6" /></button>
+            </div>
+            <p className="text-sm text-slate-500 font-bold uppercase tracking-widest mt-2">Cement-Based Element Monitoring</p>
+         </div>
          
-         <div className="p-4 md:p-6 border-b border-slate-200">
-            <h3 className="font-extrabold text-lg md:text-xl text-slate-900 tracking-tight">Grouping Engine</h3>
-            {selectedType ? (
-               <p className="text-xs md:text-sm text-blue-600 font-bold mt-1 uppercase tracking-widest bg-blue-50 px-2 py-1 rounded-md border border-blue-100 inline-block">Locking Type: {selectedType}</p>
-            ) : (
-               <p className="text-xs md:text-sm text-slate-500 font-medium">Select matching elements to group.</p>
+         <div className="flex-1 overflow-y-auto p-6 space-y-4 no-scrollbar">
+            {elements.filter(e => e.selected || e.status === 'Curing').map(el => (
+               <div key={el.id} className={`p-5 rounded-[1.5rem] border-2 transition-all ${el.status === 'Curing' ? 'bg-amber-500/10 border-amber-500/30' : 'bg-slate-900 border-blue-500/50 shadow-lg shadow-blue-500/10'}`}>
+                 <div className="flex items-center justify-between">
+                   <div>
+                     <p className="font-black text-lg text-white">{el.id}</p>
+                     <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">{el.type}</p>
+                   </div>
+                   {el.status === 'Curing' ? (
+                     <span className="px-3 py-1 bg-amber-500 text-slate-950 text-[10px] font-black rounded-full uppercase tracking-widest">Active Curing</span>
+                   ) : (
+                     <button onClick={() => toggleElement(el.id)} className="text-slate-500 hover:text-red-500 transition-colors"><X className="w-5 h-5" /></button>
+                   )}
+                 </div>
+               </div>
+            ))}
+            {elements.filter(e => e.selected).length === 0 && elements.filter(e => e.status === 'Curing').length === 0 && (
+              <div className="h-full flex flex-col items-center justify-center text-center p-8 opacity-40">
+                <CheckSquare className="w-16 h-16 text-slate-700 mb-4" />
+                <p className="text-slate-500 font-bold">No elements selected for grouping.</p>
+              </div>
             )}
          </div>
-         <div className="flex-1 overflow-y-auto p-3 md:p-5 space-y-3 md:space-y-4 no-scrollbar">
-            {elements.map(el => {
-               const isMismatched = selectedType && selectedType !== el.type;
-               const isGrouped = el.status === 'Grouped';
-               const isDisabled = isGrouped || isMismatched;
-               return (
-                  <div key={el.id} onClick={() => !isDisabled && toggleElement(el.id)} 
-                     className={`p-3 md:p-4 rounded-xl border-2 transition-all ${isGrouped ? 'bg-amber-50 border-amber-300 opacity-60' : isDisabled ? 'bg-slate-50 border-slate-200 opacity-50 cursor-not-allowed' : el.selected ? 'bg-blue-50 border-blue-500 shadow-md ring-2 ring-blue-500/20 shadow-blue-500/10 cursor-pointer transform scale-[1.02]' : 'bg-white border-slate-200 hover:border-slate-300 hover:shadow-sm cursor-pointer'} flex items-center justify-between`}>
-                    <div className="flex items-center gap-3">
-                      <CheckSquare className={`w-5 h-5 transition-colors ${el.selected ? 'text-blue-600' : isGrouped ? 'text-amber-500' : 'text-slate-300'}`} />
-                      <div>
-                        <p className={`font-extrabold text-md md:text-lg transition-colors ${isDisabled ? 'text-slate-400' : el.selected ? 'text-blue-900' : 'text-slate-900'}`}>{el.id}</p>
-                        <p className={`text-[10px] font-bold uppercase tracking-widest ${el.selected ? 'text-blue-500' : 'text-slate-500'}`}>{el.type}</p>
-                      </div>
-                    </div>
-                    {isGrouped && <span className="text-[9px] md:text-[10px] font-extrabold text-amber-800 px-2.5 py-1 bg-amber-200 rounded-full uppercase tracking-widest shadow-sm">Grouped</span>}
-                    {isMismatched && !isGrouped && <span className="text-[9px] md:text-[10px] font-extrabold text-slate-400 uppercase tracking-widest flex items-center gap-1"><X className="w-3 h-3"/> Locked</span>}
-                  </div>
-               )
-            })}
-         </div>
-         <div className="p-4 md:p-6 border-t border-slate-200 bg-white shadow-[0_-10px_20px_rgba(0,0,0,0.02)]">
+
+         <div className="p-8 border-t border-slate-800 bg-slate-950">
             <button 
-               disabled={selectedElements.length === 0}
+               disabled={elements.filter(e => e.selected).length === 0}
                onClick={() => setShowGroupModal(true)}
-               className={`w-full py-4 rounded-xl font-extrabold text-md md:text-lg flex items-center justify-center gap-3 transition-all ${selectedElements.length > 0 ? 'bg-slate-900 text-white hover:bg-blue-600 shadow-xl shadow-blue-900/20 active:scale-[0.98]' : 'bg-slate-100 text-slate-400 border-2 border-slate-200 cursor-not-allowed'}`}>
-              <LayoutGrid className="w-5 h-5 md:w-6 md:h-6" />
-              FORM NEW GROUP {selectedElements.length > 0 && `(${selectedElements.length})`}
+               className={`w-full py-5 rounded-2xl font-black text-lg flex items-center justify-center gap-3 transition-all ${elements.filter(e => e.selected).length > 0 ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-2xl shadow-blue-600/20 active:scale-95' : 'bg-slate-900 text-slate-700 border-2 border-slate-800 cursor-not-allowed'}`}>
+              <LayoutGrid className="w-6 h-6" />
+              CREATE BATCH GROUP
             </button>
          </div>
       </div>
 
-      {/* OVERLAY MODAL: GROUP CREATION DIALOG */}
+      {/* MODAL */}
       {showGroupModal && (
-         <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-            <div className="bg-white w-full max-w-md rounded-[2rem] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 border border-slate-200/50">
-               {/* Modal Header */}
-               <div className="bg-slate-900 p-6 md:p-8 flex items-center justify-between">
-                  <div>
-                     <h2 className="text-xl md:text-2xl font-extrabold text-white tracking-tight">Form Element Group</h2>
-                     <p className="text-blue-400 text-[10px] md:text-xs font-bold mt-1.5 uppercase tracking-widest flex items-center gap-2">
-                       <CheckSquare className="w-3 h-3" /> {selectedElements.length} {selectedType}(s) Selected
-                     </p>
-                  </div>
-                  <button onClick={() => setShowGroupModal(false)} className="text-slate-400 hover:text-white p-2 bg-slate-800 rounded-full transition-colors"><X className="w-5 h-5" /></button>
+         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-6">
+            <div className="bg-slate-900 w-full max-w-lg rounded-[3rem] shadow-2xl overflow-hidden border border-slate-800">
+               <div className="p-10 border-b border-slate-800">
+                  <h2 className="text-3xl font-black text-white tracking-tight">Initialize Curing</h2>
+                  <p className="text-blue-500 text-xs font-black mt-2 uppercase tracking-widest">Assigning {elements.filter(e => e.selected).length} Structural Elements</p>
                </div>
                
-               {/* Modal Body Form */}
-               <div className="p-6 md:p-8 space-y-6">
+               <div className="p-10 space-y-8">
                   <div>
-                     <label className="block text-[11px] font-extrabold text-slate-500 uppercase tracking-widest mb-2.5">Unique Group Name / Title</label>
-                     <input type="text" placeholder={`e.g. ${selectedType}s Set A`} className="w-full border-2 border-slate-200 rounded-xl p-3.5 font-extrabold text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all placeholder:text-slate-300" />
-                  </div>
-                  <div>
-                     <label className="block text-[11px] font-extrabold text-slate-500 uppercase tracking-widest mb-2.5">Construction Completion Date</label>
-                     <input type="date" className="w-full border-2 border-slate-200 rounded-xl p-3.5 font-extrabold text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all" />
-                     <p className="text-xs text-slate-400 font-bold mt-2 flex items-center gap-1.5">
-                       <span className="w-1.5 h-1.5 bg-blue-500 rounded-full"></span> 
-                       Curing timer will automatically commence based on this date.
-                     </p>
-                  </div>
-                  <div>
-                     <label className="block text-[11px] font-extrabold text-slate-500 uppercase tracking-widest mb-2.5">Notes (Optional)</label>
-                     <textarea rows={2} className="w-full border-2 border-slate-200 rounded-xl p-3.5 font-bold text-slate-700 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all resize-none placeholder:text-slate-300" placeholder="Add tracking annotations..." />
+                     <label className="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-4 ml-1">Select Field Contractor</label>
+                     <select 
+                       className="w-full bg-slate-950 border-2 border-slate-800 rounded-2xl p-5 font-black text-white focus:outline-none focus:border-blue-600 transition-all appearance-none cursor-pointer"
+                       value={selectedContractor}
+                       onChange={(e) => setSelectedContractor(Number(e.target.value))}
+                     >
+                        <option value={0}>Choose Contractor...</option>
+                        {contractors.map(c => <option key={c.id} value={c.id}>{c.username}</option>)}
+                     </select>
                   </div>
                   
-                  {/* Action Bar */}
-                  <div className="pt-4">
-                     <button onClick={handleGroupSave} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-extrabold py-4 rounded-xl shadow-[0_10px_20px_rgba(37,99,235,0.2)] transition-all active:scale-[0.98] text-lg flex items-center justify-center gap-2">
-                        <CheckSquare className="w-5 h-5" /> Initialize Curing Engine
-                     </button>
-                  </div>
+                  <button onClick={handleGroupSave} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-5 rounded-2xl shadow-2xl shadow-blue-600/20 transition-all active:scale-95 text-xl flex items-center justify-center gap-3">
+                    {loading ? <Loader2 className="w-7 h-7 animate-spin" /> : <><Send className="w-6 h-6" /> START MONITORING</>}
+                  </button>
                </div>
             </div>
          </div>

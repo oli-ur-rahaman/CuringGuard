@@ -1,29 +1,130 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   ShieldAlert, Server, HardHat, Ban, Box, DatabaseZap, 
-  Power, Settings2, ShieldBan, Users, Plus, LogOut, ChevronRight, Menu, X
+  Power, Settings2, ShieldBan, Plus, LogOut, ChevronRight, Menu, X, Search, Edit3, Trash2, KeyRound
 } from 'lucide-react';
+import { hierarchyService, libraryService } from '../services/api';
 
 export default function Superadmin() {
   const [activeTab, setActiveTab] = useState('tenants');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
-  const [monitors, setMonitors] = useState([
-    { id: 1, name: 'Bureau of Engineering', rootAdmin: 'sys_boe_01', projects: 4, contractors: 12, status: 'Online' },
-    { id: 2, name: 'Riyadh Infrastructure Auth', rootAdmin: 'ria_admin', projects: 1, contractors: 3, status: 'Online' },
-    { id: 3, name: 'National Paving Co', rootAdmin: 'npc_director', projects: 0, contractors: 0, status: 'Suspended' }
-  ]);
+  // Dynamic Data States
+  const [tenants, setTenants] = useState<any[]>([]);
+  const [elements, setElements] = useState<any[]>([]);
+  const [globalContractors] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const [elements, setElements] = useState([
-    { id: 1, name: 'Structural Slab', duration: 7, color: 'Amber' },
-    { id: 2, name: 'Core Wall', duration: 14, color: 'Blue' },
-    { id: 3, name: 'Support Column', duration: 3, color: 'Purple' }
-  ]);
+  // Search & Filter States
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
 
-  const [globalContractors, setGlobalContractors] = useState([
-    { id: 1, name: 'Oli Contractors LLC', hostMonitor: 'Bureau of Engineering', status: 'Active' },
-    { id: 2, name: 'Alpha Structural Builders', hostMonitor: 'Riyadh Infrastructure Auth', status: 'Active' }
-  ]);
+  // Modal States
+  const [showModal, setShowModal] = useState(false);
+  const [editingItem, setEditingItem] = useState<any>(null);
+  const [formData, setFormData] = useState<any>({});
+
+  useEffect(() => {
+    refreshData();
+  }, [activeTab]);
+
+  const refreshData = async () => {
+    setLoading(true);
+    try {
+      if (activeTab === 'tenants') {
+        const data = await hierarchyService.getTenants();
+        setTenants(data);
+      } else if (activeTab === 'elements') {
+        const data = await libraryService.getRules();
+        setElements(data);
+      }
+    } catch (err) {
+      console.error(`Failed to fetch ${activeTab}`, err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredTenants = tenants.filter(t => {
+    const matchesSearch = 
+      (t.name?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
+      (t.subdomain?.toLowerCase() || '').includes(searchQuery.toLowerCase());
+    
+    const matchesStatus = 
+      statusFilter === 'all' || 
+      (statusFilter === 'active' && t.is_active) || 
+      (statusFilter === 'inactive' && !t.is_active);
+
+    return matchesSearch && matchesStatus;
+  });
+
+  const handleToggleStatus = async (id: number) => {
+    try {
+      await hierarchyService.toggleTenantActive(id);
+      refreshData();
+    } catch (err: any) {
+      console.error("Toggle error:", err);
+      alert(err.response?.data?.detail || "Failed to toggle status");
+    }
+  };
+
+  const handleResetPassword = async (tenantId: number) => {
+    const newPassword = window.prompt("Enter new password for this tenant's monitor account:");
+    if (newPassword && newPassword.length >= 6) {
+      try {
+        await hierarchyService.resetTenantPassword(tenantId, newPassword);
+        alert("Password reset successfully!");
+      } catch (err: any) {
+        console.error("Reset error:", err);
+        alert(err.response?.data?.detail || "Failed to reset password.");
+      }
+    } else if (newPassword) {
+      alert("Password must be at least 6 characters.");
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (window.confirm("Are you sure you want to permanently remove this tenant?")) {
+      try {
+        await hierarchyService.deleteTenant(id);
+        refreshData();
+      } catch (err: any) {
+        console.error("Delete error:", err);
+        alert(err.response?.data?.detail || "Delete failed");
+      }
+    }
+  };
+
+  const openAddModal = () => {
+    setEditingItem(null);
+    setFormData({ name: '', subdomain: '' });
+    setShowModal(true);
+  };
+
+  const handleEdit = (item: any) => {
+    setEditingItem(item);
+    setFormData({ name: item.name, subdomain: item.subdomain || '' });
+    setShowModal(true);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      if (activeTab === 'tenants') {
+        if (editingItem) {
+          alert("Edit saved (Note: backend PATCH for tenants not yet implemented).");
+        } else {
+          await hierarchyService.createTenant(formData);
+        }
+      }
+      setShowModal(false);
+      refreshData();
+    } catch (err: any) {
+      console.error("Submission error:", err);
+      const msg = err.response?.data?.detail || "Operation failed.";
+      alert(typeof msg === 'string' ? msg : JSON.stringify(msg));
+    }
+  };
 
   const sidebarMenus = [
     { id: 'tenants', label: 'Monitor Tenants', icon: Server, description: 'Manage office silos' },
@@ -70,7 +171,7 @@ export default function Superadmin() {
              {sidebarMenus.map(menu => (
                 <button 
                   key={menu.id} 
-                  onClick={() => { setActiveTab(menu.id); setIsMobileMenuOpen(false); }}
+                  onClick={() => { setActiveTab(menu.id); setIsMobileMenuOpen(false); setSearchQuery(''); setStatusFilter('all'); }}
                   className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all text-left ${activeTab === menu.id ? 'bg-red-50 text-red-700 border border-red-200/50 shadow-[0_2px_10px_rgba(220,38,38,0.05)]' : 'hover:bg-slate-50 text-slate-600'}`}
                 >
                    <menu.icon className={`w-5 h-5 flex-shrink-0 ${activeTab === menu.id ? 'text-red-600' : 'text-slate-400'}`} />
@@ -92,51 +193,92 @@ export default function Superadmin() {
        {/* MAIN CONTENT AREA */}
        <div className="flex-1 overflow-y-auto bg-slate-50 relative pt-20 md:pt-0">
           
-          {/* TAB 1: MONITORS / TENANTS */}
+          {/* TAB 1: TENANTS */}
           {activeTab === 'tenants' && (
              <div className="p-6 md:p-10 max-w-[1200px] animate-in fade-in zoom-in-95 duration-300">
-                <div className="mb-8 flex items-center justify-between">
+                <div className="mb-8 flex flex-col xl:flex-row xl:items-center justify-between gap-6">
                    <div>
                       <h2 className="text-2xl md:text-3xl font-extrabold text-slate-900 flex items-center gap-3 tracking-tight">
                          <Server className="w-8 h-8 text-blue-600" /> Active Master Tenants
                       </h2>
                       <p className="text-slate-500 font-medium mt-2">Siloed Monitor entities controlling independent projects and packages.</p>
                    </div>
-                   <button className="bg-slate-900 border border-slate-800 text-white px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-slate-900/20 hover:bg-slate-800"><Plus className="w-4 h-4" /> Deploy Tenant</button>
+                   
+                   <div className="flex flex-wrap items-center gap-3">
+                     <div className="flex items-center bg-slate-100 p-1 rounded-2xl border border-slate-200">
+                       <button onClick={() => setStatusFilter('all')} className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${statusFilter === 'all' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>All</button>
+                       <button onClick={() => setStatusFilter('active')} className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${statusFilter === 'active' ? 'bg-green-500 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Active</button>
+                       <button onClick={() => setStatusFilter('inactive')} className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${statusFilter === 'inactive' ? 'bg-red-500 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Suspended</button>
+                     </div>
+
+                     <div className="relative group flex-1 min-w-[200px]">
+                       <Search className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors" />
+                       <input 
+                         type="text" 
+                         placeholder="Search tenants..." 
+                         value={searchQuery}
+                         onChange={(e) => setSearchQuery(e.target.value)}
+                         className="bg-white border-2 border-slate-200 rounded-2xl py-3 pl-12 pr-6 font-bold text-sm outline-none focus:border-blue-600 transition-all w-full"
+                       />
+                     </div>
+
+                     <button onClick={openAddModal} className="bg-slate-900 border border-slate-800 text-white px-5 py-3 rounded-2xl font-bold flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-slate-900/20 hover:bg-slate-800">
+                       <Plus className="w-4 h-4" /> Deploy Tenant
+                     </button>
+                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-                   {monitors.map(m => (
-                      <div key={m.id} className="bg-white border-2 border-slate-200 p-6 rounded-3xl relative overflow-hidden group hover:border-slate-300 transition-colors shadow-sm">
-                         <div className={`absolute top-0 left-0 w-full h-1.5 ${m.status === 'Online' ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                         <div className="flex justify-between items-start mb-6 mt-1">
-                            <div>
-                               <h3 className="text-lg font-extrabold text-slate-900 leading-tight">{m.name}</h3>
-                               <p className="font-mono text-[11px] font-bold text-slate-400 mt-1.5 bg-slate-100 inline-block px-2 py-0.5 rounded border border-slate-200">ROOT: {m.rootAdmin}</p>
-                            </div>
-                            <span className={`px-2.5 py-1 rounded-full text-[9px] font-extrabold uppercase tracking-widest border shadow-sm ${m.status === 'Online' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-600 border-red-200'}`}>
-                               {m.status}
-                            </span>
-                         </div>
-                         
-                         <div className="flex items-center gap-6 mb-8 px-2 py-3 bg-slate-50 rounded-xl border border-slate-100">
-                            <div className="flex items-center gap-2 text-slate-600">
-                               <DatabaseZap className="w-4 h-4 text-blue-500" /> <span className="font-extrabold text-sm">{m.projects}</span> <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Projects</span>
-                            </div>
-                            <div className="flex items-center gap-2 text-slate-600">
-                               <HardHat className="w-4 h-4 text-amber-500" /> <span className="font-extrabold text-sm">{m.contractors}</span> <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Contractors</span>
-                            </div>
-                         </div>
+                {loading ? (
+                   <div className="flex justify-center p-10"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>
+                ) : filteredTenants.length === 0 ? (
+                   <div className="text-center py-20">
+                     <Server className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+                     <p className="text-slate-400 font-bold text-lg">No tenants found</p>
+                     <p className="text-slate-400 text-sm mt-1">Click "Deploy Tenant" to create your first one.</p>
+                   </div>
+                ) : (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                     {filteredTenants.map(t => (
+                        <div key={t.id} className={`bg-white border-2 p-6 rounded-3xl relative overflow-hidden group transition-colors shadow-sm ${t.is_active ? 'border-slate-200 hover:border-slate-300' : 'border-red-100 bg-red-50/10 hover:border-red-200'}`}>
+                           <div className={`absolute top-0 left-0 w-full h-1.5 ${t.is_active ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                           
+                           {/* Hover Actions */}
+                           <div className="absolute top-4 right-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                             <button onClick={() => handleEdit(t)} className="p-2 bg-slate-50 hover:bg-blue-50 hover:text-blue-600 rounded-xl text-slate-400 transition-colors"><Edit3 className="w-4 h-4" /></button>
+                             <button onClick={() => handleDelete(t.id)} className="p-2 bg-slate-50 hover:bg-red-50 hover:text-red-600 rounded-xl text-slate-400 transition-colors"><Trash2 className="w-4 h-4" /></button>
+                           </div>
 
-                         <div className="grid grid-cols-2 gap-3 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
-                            <button className="py-2.5 rounded-xl bg-white border-2 border-slate-200 font-bold text-slate-600 text-xs uppercase tracking-widest hover:bg-slate-50 shadow-sm active:scale-95 transition-all">Reset Auth</button>
-                            <button className={`py-2.5 rounded-xl border-2 font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-sm active:scale-95 transition-all ${m.status === 'Online' ? 'bg-red-50 border-red-200 text-red-600 hover:bg-red-100' : 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100'}`}>
-                               <Power className="w-3.5 h-3.5" /> {m.status === 'Online' ? 'Suspend' : 'Reactivate'}
-                            </button>
-                         </div>
-                      </div>
-                   ))}
-                </div>
+                           <div className="flex justify-between items-start mb-6 mt-1">
+                              <div>
+                                 <h3 className="text-lg font-extrabold text-slate-900 leading-tight pr-16">{t.name}</h3>
+                                 {t.subdomain && (
+                                   <p className="font-mono text-[11px] font-bold text-slate-400 mt-1.5 bg-slate-100 inline-block px-2 py-0.5 rounded border border-slate-200">{t.subdomain}</p>
+                                 )}
+                              </div>
+                              <span className={`px-2.5 py-1 rounded-full text-[9px] font-extrabold uppercase tracking-widest border shadow-sm ${t.is_active ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-600 border-red-200'}`}>
+                                 {t.is_active ? 'Online' : 'Suspended'}
+                              </span>
+                           </div>
+                           
+                           <div className="flex items-center gap-6 mb-8 px-2 py-3 bg-slate-50 rounded-xl border border-slate-100">
+                              <div className="flex items-center gap-2 text-slate-600">
+                                 <DatabaseZap className="w-4 h-4 text-blue-500" /> <span className="font-extrabold text-sm">—</span> <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Projects</span>
+                              </div>
+                              <div className="flex items-center gap-2 text-slate-600">
+                                 <HardHat className="w-4 h-4 text-amber-500" /> <span className="font-extrabold text-sm">—</span> <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Contractors</span>
+                              </div>
+                           </div>
+
+                           <div className="grid grid-cols-2 gap-3">
+                              <button onClick={() => handleResetPassword(t.id)} className="py-2.5 rounded-xl bg-white border-2 border-slate-200 font-bold text-slate-600 text-xs uppercase tracking-widest hover:bg-slate-50 shadow-sm active:scale-95 transition-all"><KeyRound className="w-3.5 h-3.5 inline-block mr-1 -mt-0.5" /> Reset Auth</button>
+                              <button onClick={() => handleToggleStatus(t.id)} className={`py-2.5 rounded-xl border-2 font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-sm active:scale-95 transition-all ${t.is_active ? 'bg-red-50 border-red-200 text-red-600 hover:bg-red-100' : 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100'}`}>
+                                 <Power className="w-3.5 h-3.5" /> {t.is_active ? 'Suspend' : 'Reactivate'}
+                              </button>
+                           </div>
+                        </div>
+                     ))}
+                  </div>
+                )}
              </div>
           )}
 
@@ -168,16 +310,16 @@ export default function Superadmin() {
                                <td className="p-6 pl-8">
                                  <div className="flex items-center gap-4">
                                    <div className="w-10 h-10 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500 group-hover:bg-blue-50 group-hover:text-blue-500 group-hover:border-blue-200 transition-colors"><Box className="w-5 h-5" /></div>
-                                   <span className="font-extrabold text-slate-900 text-lg">{el.name}</span>
+                                   <span className="font-extrabold text-slate-900 text-lg">{el.element_name || el.name}</span>
                                  </div>
                                </td>
                                <td className="p-6">
-                                  <span className="font-mono text-amber-700 font-bold bg-amber-50 px-4 py-2 rounded-xl border border-amber-200 shadow-sm inline-block">{el.duration} Days Required</span>
+                                  <span className="font-mono text-amber-700 font-bold bg-amber-50 px-4 py-2 rounded-xl border border-amber-200 shadow-sm inline-block">{el.required_curing_days || el.duration} Days Required</span>
                                </td>
                                <td className="p-6">
                                   <span className="font-extrabold text-xs uppercase tracking-widest text-slate-600 bg-white shadow-sm px-4 py-2 rounded-full inline-block border-2 border-slate-200 flex items-center gap-2 max-w-fit">
-                                    <span className={`w-2.5 h-2.5 rounded-full ${el.color === 'Amber' ? 'bg-amber-500' : el.color === 'Blue' ? 'bg-blue-500' : 'bg-purple-500'}`}></span>
-                                    {el.color}
+                                    <span className={`w-2.5 h-2.5 rounded-full ${el.color === 'Amber' ? 'bg-amber-500' : el.color === 'Blue' ? 'bg-purple-500' : 'bg-purple-500'}`}></span>
+                                    {el.geometry_type || el.color}
                                   </span>
                                </td>
                             </tr>
@@ -233,6 +375,35 @@ export default function Superadmin() {
           )}
 
        </div>
+
+       {/* ADD/EDIT TENANT MODAL */}
+       {showModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
+          <div className="bg-white w-full max-w-lg rounded-[3rem] p-10 shadow-2xl animate-in zoom-in-95 duration-200">
+            <h2 className="text-3xl font-extrabold text-slate-900 mb-6 tracking-tight">
+              {editingItem ? 'Edit' : 'Deploy'} Tenant
+            </h2>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1 pl-1">Organization Name</label>
+                <input type="text" required className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 font-bold outline-none focus:border-blue-600 transition-colors" value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="Bureau of Engineering" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1 pl-1">Subdomain Identifier</label>
+                <input type="text" className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 font-bold outline-none focus:border-blue-600 transition-colors" value={formData.subdomain || ''} onChange={e => setFormData({...formData, subdomain: e.target.value})} placeholder="boe-corp (optional)" />
+              </div>
+
+              <div className="pt-6 flex gap-3">
+                <button type="button" onClick={() => setShowModal(false)} className="flex-1 px-6 py-4 rounded-2xl font-extrabold text-slate-500 hover:bg-slate-100 transition-all active:scale-95">Cancel</button>
+                <button type="submit" className="flex-1 px-6 py-4 rounded-2xl bg-slate-900 text-white font-extrabold hover:bg-slate-800 transition-all shadow-lg shadow-slate-900/20 active:scale-95">
+                  {editingItem ? 'Save Changes' : 'Initialize'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

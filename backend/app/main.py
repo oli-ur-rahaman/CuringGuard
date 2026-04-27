@@ -6,10 +6,21 @@ import os
 # Load environment variables
 load_dotenv()
 
+from contextlib import asynccontextmanager
+from backend.app.services.cron_service import start_scheduler
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup actions
+    start_scheduler()
+    yield
+    # Shutdown actions could go here
+
 app = FastAPI(
     title="CuringGuard Backend API",
     description="The FastAPI core backend for the CuringGuard Multi-Tenant System",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # Allow React frontend to communicate natively
@@ -21,8 +32,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from backend.app.core.database import engine, Base
+from backend.app.routers import auth, hierarchy
+
+# Initialize all database tables
+Base.metadata.create_all(bind=engine)
+
+app.include_router(auth.router)
+app.include_router(hierarchy.router)
+
 @app.get("/")
 def health_check():
     return {"status": "success", "message": "CuringGuard API Engine Room is Online. 🚀"}
-
-# TODO: Database Configuration (SQLAlchemy / Laragon PostgreSQL) will be mounted here.

@@ -4,10 +4,14 @@ import os
 from dotenv import load_dotenv
 
 # Forced override to ignore any global MySQL environment variables.
-load_dotenv(override=True)
+# Load from root
+env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), '.env')
+load_dotenv(env_path, override=True)
 
-# We default to a standard Laragon pattern. Update this if Laragon has a different password!
-SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:root@localhost:5432/curingguard")
+SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL")
+if not SQLALCHEMY_DATABASE_URL:
+    # Standard Laragon MySQL fallback
+    SQLALCHEMY_DATABASE_URL = "mysql+pymysql://root:@localhost:3306/curingguard"
 
 try:
     engine = create_engine(SQLALCHEMY_DATABASE_URL)

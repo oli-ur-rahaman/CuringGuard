@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { LayoutDashboard, Map, Users, Settings, Menu, Bell, HardHat, X, FolderGit2 } from 'lucide-react';
+import { LayoutDashboard, Map, Users, Settings, Menu, Bell, HardHat, X, FolderGit2, LogOut } from 'lucide-react';
+import { authService } from '../services/api';
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -16,28 +17,24 @@ export default function Layout() {
   return (
     <div className="h-[100dvh] w-screen bg-slate-50 flex font-sans overflow-hidden">
       
-      {/* Mobile Backdrop Overlay - closes the sidebar if tapped explicitly */}
+      {/* Mobile Backdrop Overlay */}
       {sidebarOpen && (
          <div className="fixed inset-0 bg-slate-900/50 z-40 md:hidden backdrop-blur-sm" onClick={() => setSidebarOpen(false)} />
       )}
 
-      {/* Multi-platform Responsive Sidebar */}
+      {/* Sidebar - Instant snap, no JS layout checks */}
       <aside className={`
         fixed md:relative top-0 left-0 h-[100dvh]
         ${sidebarOpen ? 'translate-x-0 w-64' : '-translate-x-full md:translate-x-0 md:w-20'} 
-        bg-slate-900 text-slate-300 transition-all duration-300 flex flex-col z-50 shadow-2xl md:shadow-xl
+        bg-slate-900 text-slate-300 flex flex-col z-50 shadow-2xl md:shadow-xl
       `}>
         <div className="h-16 flex items-center px-4 bg-slate-950 border-b border-slate-800 justify-between">
           <div className="flex items-center">
             <HardHat className="text-amber-500 w-8 h-8 flex-shrink-0" />
-            {/* Display full text if explicitly open or window hits desktop bounds */}
-            {(sidebarOpen || window.innerWidth > 768) && (
-               <span className={`ml-3 font-bold text-lg text-white tracking-wide transition-opacity ${!sidebarOpen && 'md:hidden'}`}>
-                  CuringGuard
-               </span>
-            )}
+            <span className={`ml-3 font-bold text-lg text-white tracking-wide ${sidebarOpen ? 'block' : 'hidden'} md:hidden`}>
+               CuringGuard
+            </span>
           </div>
-          {/* Mobile specific close button */}
           <button className="md:hidden text-slate-400 hover:text-white" onClick={() => setSidebarOpen(false)}>
              <X className="w-6 h-6" />
           </button>
@@ -46,11 +43,9 @@ export default function Layout() {
         <nav className="flex-1 py-6 flex flex-col gap-2 px-3 overflow-y-auto">
           {navItems.map((item) => (
             <NavLink key={item.name} to={item.path} onClick={() => setSidebarOpen(false)}
-              className={({ isActive }) => `flex items-center px-3 py-3 rounded-md transition-colors ${isActive ? 'bg-amber-500 text-slate-900 font-medium shadow-md' : 'hover:bg-slate-800 hover:text-white'}`}>
+              className={({ isActive }) => `flex items-center px-3 py-3 rounded-md transition-colors active:scale-95 ${isActive ? 'bg-amber-500 text-slate-900 font-medium shadow-md' : 'hover:bg-slate-800 hover:text-white'}`}>
               <item.icon className="w-5 h-5 flex-shrink-0" />
-              {(sidebarOpen || window.innerWidth > 768) && (
-                 <span className={`ml-3 whitespace-nowrap ${!sidebarOpen && 'md:hidden'}`}>{item.name}</span>
-              )}
+              <span className={`ml-3 whitespace-nowrap ${sidebarOpen ? 'block' : 'hidden'} md:hidden`}>{item.name}</span>
             </NavLink>
           ))}
         </nav>
