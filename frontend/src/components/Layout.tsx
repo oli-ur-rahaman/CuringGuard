@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { LayoutDashboard, Map, Users, Settings, Menu, Bell, HardHat, X, FolderGit2, LogOut } from 'lucide-react';
+import { LayoutDashboard, Map, Users, Settings, Menu, Bell, X, FolderGit2, LogOut } from 'lucide-react';
 import { authService } from '../services/api';
-
+import logoFinal from '../assets/logo_final.png';
 export default function Layout() {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 768);
 
   const navItems = [
     { name: 'Dashboard', path: '/', icon: LayoutDashboard },
@@ -26,29 +26,40 @@ export default function Layout() {
       <aside className={`
         fixed md:relative top-0 left-0 h-[100dvh]
         ${sidebarOpen ? 'translate-x-0 w-64' : '-translate-x-full md:translate-x-0 md:w-20'} 
-        bg-slate-900 text-slate-300 flex flex-col z-50 shadow-2xl md:shadow-xl
+        bg-white border-r border-slate-200 text-slate-600 flex flex-col z-50 shadow-[20px_0_40px_rgba(0,0,0,0.05)] transition-transform duration-300
       `}>
-        <div className="h-16 flex items-center px-4 bg-slate-950 border-b border-slate-800 justify-between">
-          <div className="flex items-center">
-            <HardHat className="text-amber-500 w-8 h-8 flex-shrink-0" />
-            <span className={`ml-3 font-bold text-lg text-white tracking-wide ${sidebarOpen ? 'block' : 'hidden'} md:hidden`}>
-               CuringGuard
+        <div className="h-16 flex items-center px-4 bg-white border-b border-slate-100 justify-between">
+          <div className="flex items-center overflow-hidden">
+            <img src={logoFinal} alt="CuringGuard Logo" className="w-8 h-8 object-contain drop-shadow-sm flex-shrink-0" />
+            <span className={`ml-3 font-black text-lg tracking-tight ${sidebarOpen ? 'block' : 'hidden'}`}>
+               <span className="text-slate-900">Curing</span><span className="text-blue-600">Guard</span>
             </span>
           </div>
-          <button className="md:hidden text-slate-400 hover:text-white" onClick={() => setSidebarOpen(false)}>
+          <button className="md:hidden text-slate-400 hover:text-slate-900" onClick={() => setSidebarOpen(false)}>
              <X className="w-6 h-6" />
           </button>
         </div>
         
-        <nav className="flex-1 py-6 flex flex-col gap-2 px-3 overflow-y-auto">
+        <nav className="flex-1 py-6 flex flex-col gap-2 px-3 overflow-y-auto no-scrollbar">
           {navItems.map((item) => (
-            <NavLink key={item.name} to={item.path} onClick={() => setSidebarOpen(false)}
-              className={({ isActive }) => `flex items-center px-3 py-3 rounded-md transition-colors active:scale-95 ${isActive ? 'bg-amber-500 text-slate-900 font-medium shadow-md' : 'hover:bg-slate-800 hover:text-white'}`}>
-              <item.icon className="w-5 h-5 flex-shrink-0" />
-              <span className={`ml-3 whitespace-nowrap ${sidebarOpen ? 'block' : 'hidden'} md:hidden`}>{item.name}</span>
+            <NavLink key={item.name} to={item.path} onClick={() => window.innerWidth < 768 && setSidebarOpen(false)}
+              className={({ isActive }) => `flex items-center px-3 py-3 rounded-xl transition-all active:scale-95 ${isActive ? 'bg-blue-50 text-blue-700 font-bold shadow-[0_2px_10px_rgba(0,71,184,0.05)] border border-blue-200/50' : 'hover:bg-slate-50 text-slate-500 hover:text-slate-900'}`}>
+              {({ isActive }) => (
+                <>
+                  <item.icon className={`w-5 h-5 flex-shrink-0 ${isActive ? 'text-blue-600' : 'text-slate-400'}`} />
+                  <span className={`ml-3 whitespace-nowrap text-sm ${sidebarOpen ? 'block' : 'hidden'}`}>{item.name}</span>
+                </>
+              )}
             </NavLink>
           ))}
         </nav>
+        
+        <div className="p-4 border-t border-slate-100">
+           <button onClick={() => { authService.logout(); window.location.href='/login'; }} className="w-full flex items-center px-3 py-3 rounded-xl text-slate-500 hover:bg-slate-50 hover:text-blue-600 transition-colors font-bold text-sm group">
+              <LogOut className="w-5 h-5 flex-shrink-0 group-hover:-translate-x-1 transition-transform" />
+              <span className={`ml-3 whitespace-nowrap ${sidebarOpen ? 'block' : 'hidden'}`}>Sign Out</span>
+           </button>
+        </div>
       </aside>
 
       {/* Main Screen Content Target Area */}

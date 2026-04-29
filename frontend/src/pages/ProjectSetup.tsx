@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
-  FolderPlus, Building2, PackageOpen, FolderGit2, 
-  ChevronRight, Plus, UserPlus, HardHat, MoreVertical, Map, ChevronDown, Loader2, Trash2
+  Building2, PackageOpen, FolderGit2, 
+  ChevronRight, Plus, UserPlus, HardHat, MoreVertical, Map, ChevronDown, Loader2
 } from 'lucide-react';
-import { hierarchyService, userService } from '../services/api';
+import { hierarchyService, userService, authService } from '../services/api';
 
 export default function ProjectSetup() {
   const [activeProject, setActiveProject] = useState<number>(0);
@@ -17,14 +17,16 @@ export default function ProjectSetup() {
   const [structures, setStructures] = useState<any[]>([]);
   const [contractors, setContractors] = useState<any[]>([]);
 
-  const tenant_id = 1; // Demo purposes
+  const user = authService.getCurrentUser();
+  const user_id = user ? user.user_id : 0;
 
   const fetchData = async () => {
+    if (!user_id) return;
     try {
       setLoading(true);
       const [projData, conData] = await Promise.all([
-        hierarchyService.getProjects(tenant_id),
-        userService.getUsers(tenant_id, 'contractor')
+        hierarchyService.getProjects(user_id),
+        userService.getUsers(undefined, 'contractor') // Note: backend also dropped tenant_id
       ]);
       setProjects(projData);
       setContractors(conData);
@@ -64,6 +66,55 @@ export default function ProjectSetup() {
     }
   }, [activePackage]);
 
+  const handleAddProject = async () => {
+    const name = window.prompt("Enter new Project name:");
+    if (!name) return;
+    try {
+      await hierarchyService.createProject({ name, user_id });
+      fetchData(); // reload projects
+    } catch (e: any) {
+      alert("Error adding project: " + e.message);
+    }
+  };
+
+  const handleAddPackage = async () => {
+    if (!activeProject) return alert("Select a project first.");
+    const name = window.prompt("Enter new Package name:");
+    if (!name) return;
+    try {
+      await hierarchyService.createPackage({ name, project_id: activeProject });
+      const pkgData = await hierarchyService.getPackages(activeProject);
+      setPackages(pkgData);
+      setActivePackage(pkgData[pkgData.length - 1].id);
+    } catch (e: any) {
+      alert("Error adding package: " + e.message);
+    }
+  };
+
+  const handleAddStructure = async () => {
+    if (!activePackage) return alert("Select a package first.");
+    const name = window.prompt("Enter new Structure name:");
+    if (!name) return;
+    try {
+      await hierarchyService.createStructure({ name, package_id: activePackage });
+      const strData = await hierarchyService.getStructures(activePackage);
+      setStructures(strData);
+    } catch (e: any) {
+      alert("Error adding structure: " + e.message);
+    }
+  };
+
+  const handleAssignContractor = async (structureId: number, contractorId: number) => {
+    if (!contractorId) return;
+    try {
+      await hierarchyService.assignContractor(structureId, contractorId);
+      const strData = await hierarchyService.getStructures(activePackage);
+      setStructures(strData);
+    } catch (e: any) {
+      alert("Error assigning contractor: " + e.message);
+    }
+  };
+
   if (loading && projects.length === 0) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -91,7 +142,7 @@ export default function ProjectSetup() {
                   <FolderGit2 className="text-blue-600 w-6 h-6" />
                   <h2 className="font-extrabold text-slate-900 text-lg">Projects</h2>
                </div>
-               <button className="bg-slate-900 text-white p-2 rounded-xl hover:bg-slate-800 shadow-sm transition-all active:scale-95"><Plus className="w-5 h-5" /></button>
+               <button onClick={handleAddProject} className="bg-slate-900 text-white p-2 rounded-xl hover:bg-slate-800 shadow-sm transition-all active:scale-95"><Plus className="w-5 h-5" /></button>
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-slate-50/50 no-scrollbar">
                {projects.map(p => (
@@ -114,7 +165,7 @@ export default function ProjectSetup() {
                   <PackageOpen className="text-amber-500 w-6 h-6" />
                   <h2 className="font-extrabold text-slate-900 text-lg">Packages</h2>
                </div>
-               <button className="bg-slate-900 text-white p-2 rounded-xl hover:bg-slate-800 shadow-sm transition-all active:scale-95"><Plus className="w-5 h-5" /></button>
+               <button onClick={handleAddPackage} className="bg-slate-900 text-white p-2 rounded-xl hover:bg-slate-800 shadow-sm transition-all active:scale-95"><Plus className="w-5 h-5" /></button>
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-slate-50/50 no-scrollbar">
                {packages.map(pkg => (
@@ -140,7 +191,7 @@ export default function ProjectSetup() {
                   <Building2 className="text-purple-600 w-6 h-6" />
                   <h2 className="font-extrabold text-slate-900 text-lg">Structures</h2>
                </div>
-               <button className="bg-slate-900 text-white p-2 rounded-xl hover:bg-slate-800 shadow-sm transition-all active:scale-95"><Plus className="w-5 h-5" /></button>
+               <button onClick={handleAddStructure} className="bg-slate-900 text-white p-2 rounded-xl hover:bg-slate-800 shadow-sm transition-all active:scale-95"><Plus className="w-5 h-5" /></button>
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/50 no-scrollbar">
                {activePackage !== 0 ? (
@@ -182,7 +233,7 @@ export default function ProjectSetup() {
                               <div className="relative">
                                 <select 
                                   className="appearance-none w-full bg-white border-2 border-dashed border-slate-300 rounded-xl py-3 pl-10 pr-10 hover:border-purple-400 focus:outline-none focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 transition-all text-slate-600 font-extrabold text-[11px] lg:text-xs tracking-wide cursor-pointer shadow-sm"
-                                  onChange={(e) => alert(`Assigned structure ${s.id} to contractor ${e.target.value}`)}
+                                  onChange={(e) => handleAssignContractor(s.id, Number(e.target.value))}
                                   defaultValue=""
                                 >
                                   <option value="" disabled>DEPLOY CONTRACTOR...</option>

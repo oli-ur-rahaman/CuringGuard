@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AlertCircle, CheckCircle2, Clock, Loader2, Send } from 'lucide-react';
 import { curingService, userService } from '../services/api';
 

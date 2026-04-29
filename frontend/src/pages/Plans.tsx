@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  MousePointer2, Square, Slash, MapPin, Type, Hand,
-  ZoomIn, ZoomOut, Layers, LayoutGrid, CheckSquare, 
-  ChevronRight, ChevronLeft, Plus, Image as ImageIcon,
-  FolderOpen, FileText, ChevronDown, X, Loader2, Send,
+  MousePointer2, Square, Slash, MapPin, Hand,
+  LayoutGrid, CheckSquare, 
+  Plus, Image as ImageIcon,
+  FolderOpen, FileText, X, Loader2, Send,
   Ruler
 } from 'lucide-react';
 import { curingService, userService } from '../services/api';
@@ -12,7 +12,6 @@ export default function Plans() {
   const [activeTool, setActiveTool] = useState('select');
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
   const [treeOpen, setTreeOpen] = useState(false);
-  const [activePage, setActivePage] = useState(1);
   const [showGroupModal, setShowGroupModal] = useState(false);
   const [loading, setLoading] = useState(true);
   
@@ -27,9 +26,7 @@ export default function Plans() {
   const [selectedContractor, setSelectedContractor] = useState<number>(0);
 
   // Calibration State
-  const [isCalibrating, setIsCalibrating] = useState(false);
   const [calibrationPoints, setCalibrationPoints] = useState<{x: number, y: number}[]>([]);
-  const [metersPerUnit, setMetersPerUnit] = useState(1);
 
   const fetchData = async () => {
     try {
@@ -131,7 +128,6 @@ export default function Plans() {
             const p1 = calibrationPoints[0];
             const p2 = {x, y};
             const dist = Math.sqrt((p1.x - p2.x)**2 + (p1.y - p2.y)**2);
-            setMetersPerUnit(parseFloat(m) / dist);
             alert(`Scale calibrated: 1 unit = ${(parseFloat(m) / dist).toFixed(4)} meters.`);
           }
           setCalibrationPoints([]);

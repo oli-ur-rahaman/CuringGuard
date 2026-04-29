@@ -1,4 +1,4 @@
-import React from 'react';
+import type { ReactNode } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
@@ -7,9 +7,10 @@ import ProjectSetup from './pages/ProjectSetup';
 import Contractors from './pages/Contractors';
 import Superadmin from './pages/Superadmin';
 import Login from './pages/Login';
+import Settings from './pages/Settings';
 import { authService } from './services/api';
 
-const AuthGuard = ({ children, requireSuperadmin = false }: { children: React.ReactNode, requireSuperadmin?: boolean }) => {
+const AuthGuard = ({ children, requireSuperadmin = false }: { children: ReactNode, requireSuperadmin?: boolean }) => {
   if (!authService.isAuthenticated()) return <Navigate to="/login" replace />;
   if (requireSuperadmin && !authService.isSuperadmin()) return <Navigate to="/" replace />;
   return <>{children}</>;
@@ -36,7 +37,7 @@ function App() {
           <Route path="setup" element={<ProjectSetup />} />
           <Route path="plans" element={<Plans />} />
           <Route path="contractors" element={<Contractors />} />
-          <Route path="settings" element={<div className="p-8 text-slate-500 text-xl font-medium">System Settings coming soon...</div>} />
+          <Route path="settings" element={<Settings />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/login" replace />} />

@@ -42,6 +42,15 @@ export const authService = {
     } catch (e) {
       return false;
     }
+  },
+  getCurrentUser: () => {
+    const token = localStorage.getItem('token');
+    if (!token) return null;
+    try {
+      return JSON.parse(atob(token.split('.')[1]));
+    } catch (e) {
+      return null;
+    }
   }
 };
 
@@ -69,8 +78,8 @@ export const hierarchyService = {
     const response = await api.get('/hierarchy/tenants');
     return response.data;
   },
-  getProjects: async (tenantId: number) => {
-    const response = await api.get(`/hierarchy/tenants/${tenantId}/projects`);
+  getProjects: async (userId: number) => {
+    const response = await api.get(`/hierarchy/monitors/${userId}/projects`);
     return response.data;
   },
   getPackages: async (projectId: number) => {
@@ -99,6 +108,10 @@ export const hierarchyService = {
   },
   createStructure: async (data: any) => {
     const response = await api.post('/hierarchy/structures', data);
+    return response.data;
+  },
+  assignContractor: async (structureId: number, contractorId: number) => {
+    const response = await api.put(`/hierarchy/structures/${structureId}/assign?contractor_id=${contractorId}`);
     return response.data;
   },
   toggleTenantActive: async (id: number) => {

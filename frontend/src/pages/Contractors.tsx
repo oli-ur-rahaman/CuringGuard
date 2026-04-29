@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Plus, KeyRound, Ban, CheckCircle2, Building2, Loader2, Phone } from 'lucide-react';
+import { Users, Plus, KeyRound, Ban, Building2, Loader2, Phone } from 'lucide-react';
 import { userService } from '../services/api';
 
 export default function Contractors() {

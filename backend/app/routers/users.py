@@ -13,11 +13,14 @@ router = APIRouter(prefix="/api/users", tags=["Users"])
 
 @router.get("/", response_model=List[UserResponse])
 def get_users(role: str = None, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    if current_user.role != UserRole.SUPERADMIN:
+    if current_user.role not in [UserRole.SUPERADMIN, UserRole.MONITOR]:
         raise HTTPException(status_code=403, detail="Unauthorized access to user list.")
     query = db.query(User)
     if role:
         query = query.filter(User.role == role)
+    
+    # If monitor, maybe restrict them to only see contractors or monitors
+    # But for now, returning filtered query is fine since it's an internal admin tool
     return query.all()
 
 @router.post("/", response_model=UserResponse)

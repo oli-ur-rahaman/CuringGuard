@@ -1,23 +1,9 @@
 from pydantic import BaseModel
 from typing import List, Optional
 
-class TenantBase(BaseModel):
-    name: str
-    subdomain: Optional[str] = None
-
-class TenantCreate(TenantBase):
-    pass
-
-class TenantResponse(TenantBase):
-    id: int
-    is_active: bool
-
-    class Config:
-        from_attributes = True
-
 class ProjectBase(BaseModel):
     name: str
-    tenant_id: int
+    user_id: int
 
 class ProjectCreate(ProjectBase):
     pass
@@ -44,6 +30,7 @@ class PackageResponse(PackageBase):
 class StructureBase(BaseModel):
     name: str
     package_id: int
+    contractor_id: Optional[int] = None
 
 class StructureCreate(StructureBase):
     pass

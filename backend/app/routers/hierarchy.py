@@ -7,11 +7,10 @@ import shutil
 from backend.app.core.database import get_db
 from backend.app.core.auth import get_current_user, get_password_hash
 from backend.app.models.users import User, UserRole
-from backend.app.models.hierarchy import Tenant, Project, Package, Structure, Drawing
+from backend.app.models.hierarchy import Project, Package, Structure, Drawing
 from backend.app.models.curing import GeometryElement
 from backend.app.services.geometry_service import GeometryService
 from backend.app.schemas.hierarchy import (
-    TenantResponse, TenantCreate,
     ProjectResponse, ProjectCreate,
     PackageResponse, PackageCreate,
     StructureResponse, StructureCreate,
@@ -21,58 +20,10 @@ import json
 
 router = APIRouter(prefix="/api/hierarchy", tags=["Hierarchy"])
 
-# Tenant endpoints
-@router.get("/tenants", response_model=List[TenantResponse])
-def get_tenants(db: Session = Depends(get_db)):
-    return db.query(Tenant).all()
-
-@router.post("/tenants", response_model=TenantResponse)
-def create_tenant(tenant: TenantCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    if current_user.role != UserRole.SUPERADMIN:
-        raise HTTPException(status_code=403, detail="Only Superadmin can deploy tenants.")
-    db_tenant = Tenant(**tenant.model_dump())
-    db.add(db_tenant)
-    db.commit()
-    db.refresh(db_tenant)
-    return db_tenant
-
-@router.post("/tenants/{tenant_id}/toggle-active")
-def toggle_tenant_active(tenant_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    if current_user.role != UserRole.SUPERADMIN:
-        raise HTTPException(status_code=403, detail="Forbidden")
-    tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
-    tenant.is_active = not tenant.is_active
-    db.commit()
-    return {"status": "success", "is_active": tenant.is_active}
-
-@router.post("/tenants/{tenant_id}/reset-password")
-def reset_tenant_password(tenant_id: int, new_password: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    if current_user.role != UserRole.SUPERADMIN:
-        raise HTTPException(status_code=403, detail="Forbidden")
-    admin_user = db.query(User).filter(User.tenant_id == tenant_id, User.role == UserRole.MONITOR).first()
-    if not admin_user:
-        raise HTTPException(status_code=404, detail="Monitor account not found for this tenant")
-    admin_user.hashed_password = get_password_hash(new_password)
-    db.commit()
-    return {"status": "success", "message": f"Password reset for {admin_user.username}"}
-
-@router.delete("/tenants/{tenant_id}")
-def delete_tenant(tenant_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    if current_user.role != UserRole.SUPERADMIN:
-        raise HTTPException(status_code=403, detail="Forbidden")
-    tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
-    db.delete(tenant)
-    db.commit()
-    return {"status": "success"}
-
 # Project endpoints
-@router.get("/tenants/{tenant_id}/projects", response_model=List[ProjectResponse])
-def get_projects(tenant_id: int, db: Session = Depends(get_db)):
-    return db.query(Project).filter(Project.tenant_id == tenant_id).all()
+@router.get("/monitors/{user_id}/projects", response_model=List[ProjectResponse])
+def get_projects(user_id: int, db: Session = Depends(get_db)):
+    return db.query(Project).filter(Project.user_id == user_id).all()
 
 @router.post("/projects", response_model=ProjectResponse)
 def create_project(project: ProjectCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
@@ -104,6 +55,17 @@ def get_structures(package_id: int, db: Session = Depends(get_db)):
 def create_structure(structure: StructureCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     db_structure = Structure(**structure.model_dump())
     db.add(db_structure)
+    db.commit()
+    db.refresh(db_structure)
+    return db_structure
+
+@router.put("/structures/{structure_id}/assign")
+def assign_contractor(structure_id: int, contractor_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    db_structure = db.query(Structure).filter(Structure.id == structure_id).first()
+    if not db_structure:
+        raise HTTPException(status_code=404, detail="Structure not found")
+    
+    db_structure.contractor_id = contractor_id
     db.commit()
     db.refresh(db_structure)
     return db_structure
@@ -162,7 +124,7 @@ async def upload_drawing(
                 element_type=el["element_type"],
                 coordinates_json=json.dumps(el["vertices"]),
                 drawing_id=db_drawing.id,
-                tenant_id=current_user.tenant_id
+                tenant_id=current_user.id
             )
             db.add(db_el)
         
@@ -196,7 +158,7 @@ def parse_drawing(drawing_id: int, db: Session = Depends(get_db), current_user: 
             element_type=el["element_type"],
             coordinates_json=json.dumps(el["vertices"]),
             drawing_id=drawing_id,
-            tenant_id=current_user.tenant_id
+            tenant_id=current_user.id
         )
         db.add(db_el)
     

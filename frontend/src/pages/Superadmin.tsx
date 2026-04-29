@@ -91,17 +91,7 @@ export default function Superadmin() {
     }
   };
 
-  const handleDelete = async (id: number) => {
-    if (window.confirm("Are you sure you want to permanently remove this monitor?")) {
-      try {
-        await userService.deleteUser(id);
-        refreshData();
-      } catch (err: any) {
-        console.error("Delete error:", err);
-        alert(err.response?.data?.detail || "Delete failed");
-      }
-    }
-  };
+
 
   const openAddModal = () => {
     setEditingItem(null);

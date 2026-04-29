@@ -1,19 +1,13 @@
 from sqlalchemy import Column, Integer, String, ForeignKey
 from backend.app.core.database import Base
 
-class Tenant(Base):
-    __tablename__ = "tenants"
 
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(255), unique=True, index=True, nullable=False)
-    subdomain = Column(String(255), unique=True, index=True)
-    is_active = Column(Integer, default=1) # 1 for active, 0 for suspended
 
 class Project(Base):
     __tablename__ = "projects"
 
     id = Column(Integer, primary_key=True, index=True)
-    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     name = Column(String(255), nullable=False)
 
 class Package(Base):
@@ -29,6 +23,7 @@ class Structure(Base):
     id = Column(Integer, primary_key=True, index=True)
     package_id = Column(Integer, ForeignKey("packages.id"), nullable=False)
     name = Column(String(255), nullable=False)
+    contractor_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
 class Drawing(Base):
     __tablename__ = "drawings"
