@@ -6,11 +6,29 @@ const api = axios.create({
   baseURL: API_BASE_URL,
 });
 
+const parseStoredToken = () => {
+  const token = localStorage.getItem('token');
+  if (!token) return null;
+
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    const now = Math.floor(Date.now() / 1000);
+    if (typeof payload.exp === 'number' && payload.exp <= now) {
+      localStorage.removeItem('token');
+      return null;
+    }
+    return { token, payload };
+  } catch {
+    localStorage.removeItem('token');
+    return null;
+  }
+};
+
 // Inject JWT token into every request
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+  const auth = parseStoredToken();
+  if (auth) {
+    config.headers.Authorization = `Bearer ${auth.token}`;
   }
   return config;
 });
@@ -31,26 +49,14 @@ export const authService = {
     window.location.href = '/login';
   },
   isAuthenticated: () => {
-    return !!localStorage.getItem('token');
+    return !!parseStoredToken();
   },
   isSuperadmin: () => {
-    const token = localStorage.getItem('token');
-    if (!token) return false;
-    try {
-      const payload = JSON.parse(atob(token.split('.')[1]));
-      return payload.role === 'superadmin';
-    } catch (e) {
-      return false;
-    }
+    const auth = parseStoredToken();
+    return auth?.payload.role === 'superadmin';
   },
   getCurrentUser: () => {
-    const token = localStorage.getItem('token');
-    if (!token) return null;
-    try {
-      return JSON.parse(atob(token.split('.')[1]));
-    } catch (e) {
-      return null;
-    }
+    return parseStoredToken()?.payload ?? null;
   }
 };
 
@@ -90,8 +96,36 @@ export const hierarchyService = {
     const response = await api.get(`/hierarchy/packages/${packageId}/structures`);
     return response.data;
   },
+  getDrawings: async (structureId: number) => {
+    const response = await api.get(`/hierarchy/structures/${structureId}/drawings`);
+    return response.data;
+  },
+  getDrawingPages: async (drawingId: number) => {
+    const response = await api.get(`/hierarchy/drawings/${drawingId}/pages`);
+    return response.data;
+  },
+  getDrawingFile: async (drawingId: number) => {
+    const response = await api.get(`/hierarchy/drawings/${drawingId}/file`, {
+      responseType: 'blob',
+    });
+    return response.data as Blob;
+  },
+  createBlankDrawingPage: async (drawingId: number) => {
+    const response = await api.post(`/hierarchy/drawings/${drawingId}/pages/blank`);
+    return response.data;
+  },
+  getDrawingCanvasData: async (drawingId: number, pageId?: string) => {
+    const response = await api.get(`/hierarchy/drawings/${drawingId}/canvas-data`, {
+      params: pageId ? { page_id: pageId } : undefined,
+    });
+    return response.data;
+  },
   parseDrawing: async (drawingId: number) => {
     const response = await api.post(`/hierarchy/drawings/${drawingId}/parse`);
+    return response.data;
+  },
+  deleteDrawing: async (drawingId: number) => {
+    const response = await api.delete(`/hierarchy/drawings/${drawingId}`);
     return response.data;
   },
   createTenant: async (data: any) => {

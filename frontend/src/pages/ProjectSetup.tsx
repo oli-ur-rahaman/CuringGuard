@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Building2, PackageOpen, FolderGit2, 
-  ChevronRight, Plus, UserPlus, HardHat, MoreVertical, Map, ChevronDown, Loader2
+  ChevronRight, Plus, UserPlus, HardHat, MoreVertical, ChevronDown, Loader2, Trash2, FileText, ExternalLink
 } from 'lucide-react';
-import { hierarchyService, userService, authService } from '../services/api';
+import { hierarchyService, userService, authService, curingService } from '../services/api';
 
 export default function ProjectSetup() {
   const [activeProject, setActiveProject] = useState<number>(0);
@@ -16,6 +16,12 @@ export default function ProjectSetup() {
   const [packages, setPackages] = useState<any[]>([]);
   const [structures, setStructures] = useState<any[]>([]);
   const [contractors, setContractors] = useState<any[]>([]);
+  const [drawingsByStructure, setDrawingsByStructure] = useState<Record<number, any[]>>({});
+  const [selectedStructureForUpload, setSelectedStructureForUpload] = useState<number | null>(null);
+  const [uploadingStructureId, setUploadingStructureId] = useState<number | null>(null);
+  const [deletingDrawingId, setDeletingDrawingId] = useState<number | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const initialFetchDoneRef = useRef(false);
 
   const user = authService.getCurrentUser();
   const user_id = user ? user.user_id : 0;
@@ -39,6 +45,8 @@ export default function ProjectSetup() {
   };
 
   useEffect(() => {
+    if (initialFetchDoneRef.current) return;
+    initialFetchDoneRef.current = true;
     fetchData();
   }, []);
 
@@ -59,10 +67,15 @@ export default function ProjectSetup() {
       const fetchStructures = async () => {
         const strData = await hierarchyService.getStructures(activePackage);
         setStructures(strData);
+        const drawingEntries = await Promise.all(
+          strData.map(async (structure: any) => [structure.id, await hierarchyService.getDrawings(structure.id)] as const)
+        );
+        setDrawingsByStructure(Object.fromEntries(drawingEntries));
       };
       fetchStructures();
     } else {
       setStructures([]);
+      setDrawingsByStructure({});
     }
   }, [activePackage]);
 
@@ -115,6 +128,57 @@ export default function ProjectSetup() {
     }
   };
 
+  const handleStructureUploadClick = (structureId: number) => {
+    setSelectedStructureForUpload(structureId);
+    fileInputRef.current?.click();
+  };
+
+  const handleStructureFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedStructureForUpload) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('structure_id', String(selectedStructureForUpload));
+    formData.append('name', file.name);
+
+    try {
+      setUploadingStructureId(selectedStructureForUpload);
+      await curingService.uploadDrawing(formData);
+      const updatedDrawings = await hierarchyService.getDrawings(selectedStructureForUpload);
+      setDrawingsByStructure(prev => ({ ...prev, [selectedStructureForUpload]: updatedDrawings }));
+      alert('PDF upload complete.');
+    } catch (error: any) {
+      const detail = error.response?.data?.detail;
+      const message = Array.isArray(detail)
+        ? detail.map((item: any) => item.msg || item.message || JSON.stringify(item)).join('\n')
+        : detail || 'Failed to upload PDF.';
+      alert(message);
+    } finally {
+      setUploadingStructureId(null);
+      setSelectedStructureForUpload(null);
+      e.target.value = '';
+    }
+  };
+
+  const handleDeleteDrawing = async (structureId: number, drawingId: number, drawingName: string) => {
+    const confirmed = window.confirm(`Delete PDF "${drawingName}" from record and storage?`);
+    if (!confirmed) return;
+
+    try {
+      setDeletingDrawingId(drawingId);
+      await hierarchyService.deleteDrawing(drawingId);
+      setDrawingsByStructure(prev => ({
+        ...prev,
+        [structureId]: (prev[structureId] || []).filter(drawing => drawing.id !== drawingId),
+      }));
+    } catch (error: any) {
+      alert(error.response?.data?.detail || 'Failed to delete PDF.');
+    } finally {
+      setDeletingDrawingId(null);
+    }
+  };
+
   if (loading && projects.length === 0) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -131,6 +195,13 @@ export default function ProjectSetup() {
             <p className="text-sm md:text-base text-slate-500 font-medium tracking-wide">Monitor Dashboard: Define architectural scope and deploy contractors.</p>
          </div>
       </div>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".pdf"
+        className="hidden"
+        onChange={handleStructureFileUpload}
+      />
 
       {/* THREE COLUMN ARCHITECTURE (Finder Style) */}
       <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-4 md:gap-6 overflow-y-auto lg:overflow-hidden pb-10 lg:pb-0">
@@ -206,12 +277,46 @@ export default function ProjectSetup() {
 
                         {/* Action Portal Buttons */}
                         <div className="flex gap-2 mb-5">
-                            <button onClick={() => navigate('/plans')} className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-blue-50 border border-blue-200 rounded-lg text-blue-700 font-bold hover:bg-blue-100 hover:border-blue-300 transition-all text-[11px] lg:text-xs shadow-sm active:scale-95">
-                              <Map className="w-3.5 h-3.5 flex-shrink-0" /> Open Canvas
+                            <button onClick={() => handleStructureUploadClick(s.id)} disabled={uploadingStructureId === s.id} className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-indigo-50 border border-indigo-200 rounded-lg text-indigo-700 font-bold hover:bg-indigo-100 hover:border-indigo-300 transition-all text-[11px] lg:text-xs shadow-sm active:scale-95 disabled:opacity-60">
+                              {uploadingStructureId === s.id ? <Loader2 className="w-3.5 h-3.5 flex-shrink-0 animate-spin" /> : <Plus className="w-3.5 h-3.5 flex-shrink-0" />} Upload PDF
                             </button>
-                            <button className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-indigo-50 border border-indigo-200 rounded-lg text-indigo-700 font-bold hover:bg-indigo-100 hover:border-indigo-300 transition-all text-[11px] lg:text-xs shadow-sm active:scale-95">
-                              <Plus className="w-3.5 h-3.5 flex-shrink-0" /> Upload PDF
-                            </button>
+                        </div>
+
+                        <div className="mb-5 rounded-xl border border-slate-200 bg-slate-50/80 p-4">
+                            <div className="mb-3 text-[11px] font-extrabold uppercase tracking-widest text-slate-500">
+                              Uploaded Plans
+                            </div>
+                            <div className="space-y-2">
+                              {(drawingsByStructure[s.id] || []).length > 0 ? (
+                                (drawingsByStructure[s.id] || []).map((drawing) => (
+                                  <div key={drawing.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2">
+                                    <div className="flex min-w-0 items-center gap-2">
+                                      <FileText className="h-4 w-4 flex-shrink-0 text-indigo-500" />
+                                      <span className="truncate text-xs font-bold text-slate-700">{drawing.name}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        onClick={() => navigate(`/plans?structureId=${s.id}&drawingId=${drawing.id}`)}
+                                        className="flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-extrabold uppercase tracking-wider text-blue-700 transition-colors hover:bg-blue-100"
+                                      >
+                                        <ExternalLink className="h-3 w-3" />
+                                        Open
+                                      </button>
+                                      <button
+                                        onClick={() => handleDeleteDrawing(s.id, drawing.id, drawing.name)}
+                                        disabled={deletingDrawingId === drawing.id}
+                                        className="flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[10px] font-extrabold uppercase tracking-wider text-red-600 transition-colors hover:bg-red-100 disabled:opacity-60"
+                                      >
+                                        {deletingDrawingId === drawing.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                                        Delete
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))
+                              ) : (
+                                <div className="text-xs font-bold text-slate-400">No PDFs uploaded yet.</div>
+                              )}
+                            </div>
                         </div>
 
                         {/* Contractor Assignment Zone */}
