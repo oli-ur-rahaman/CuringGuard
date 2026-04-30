@@ -153,10 +153,16 @@ export default function Superadmin() {
 
     try {
       if (activeTab === 'tenants') {
+        const normalizedEmail = formData.email.trim().toLowerCase();
+        const emailCheck = await userService.checkEmail(normalizedEmail, editingItem?.id);
+        if (emailCheck.exists) {
+          alert("This email ID is already present in the system. Use another email.");
+          return;
+        }
         if (editingItem) {
-          await userService.update_user(editingItem.id, formData);
+          await userService.update_user(editingItem.id, { ...formData, email: normalizedEmail });
         } else {
-          await userService.create_user({ ...formData, role: 'monitor', username: formData.email });
+          await userService.create_user({ ...formData, email: normalizedEmail, role: 'monitor', username: normalizedEmail });
         }
       } else if (activeTab === 'elements') {
         const payload = {

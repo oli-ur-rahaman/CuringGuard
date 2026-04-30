@@ -67,6 +67,10 @@ def ensure_runtime_schema():
         drawing_element_columns = {column["name"] for column in inspector.get_columns("drawing_elements")}
     except Exception:
         drawing_element_columns = set()
+    try:
+        user_columns = {column["name"] for column in inspector.get_columns("users")}
+    except Exception:
+        user_columns = set()
 
     if "asset_kind" not in drawing_columns:
         with engine.begin() as connection:
@@ -217,6 +221,10 @@ def ensure_runtime_schema():
     if "curing_end_date" not in drawing_element_columns:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE drawing_elements ADD COLUMN curing_end_date DATE NULL"))
+
+    if "created_by_monitor_id" not in user_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE users ADD COLUMN created_by_monitor_id INTEGER NULL"))
 
 
 ensure_runtime_schema()

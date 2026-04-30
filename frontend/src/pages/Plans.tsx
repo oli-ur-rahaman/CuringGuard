@@ -353,6 +353,7 @@ export default function Plans() {
   const [startPan, setStartPan] = useState({ x: 0, y: 0 });
   const [mouseViewport, setMouseViewport] = useState({ x: 0, y: 0, visible: false });
   const [mousePage, setMousePage] = useState<Point>({ x: 0, y: 0 });
+  const [cursorContrastColor, setCursorContrastColor] = useState<'black' | 'white'>('black');
   const [selectionStart, setSelectionStart] = useState<Point | null>(null);
   const [selectionBox, setSelectionBox] = useState<SelectionBox | null>(null);
   const [selectionToggleMode, setSelectionToggleMode] = useState(false);
@@ -372,6 +373,7 @@ export default function Plans() {
   const viewportRef = useRef<HTMLDivElement>(null);
   const thumbnailRailRef = useRef<HTMLDivElement>(null);
   const dateInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const bulkStartDateInputRef = useRef<HTMLInputElement | null>(null);
   const restoredViewportKeyRef = useRef('');
   const workspaceRestoreReadyRef = useRef(false);
   const viewportRestoreAppliedRef = useRef(false);
@@ -987,12 +989,27 @@ export default function Plans() {
     executeZoom(scale * zoomFactor, e.clientX - rect.left, e.clientY - rect.top);
   };
 
+  const resolveCursorContrastColor = (pagePoint: Point) => {
+    const canvas = renderCanvasRef.current;
+    if (!canvas || !showDrawing) return 'white' as const;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context) return 'white' as const;
+    const sampleX = clamp(Math.round(pagePoint.x), 0, Math.max(canvas.width - 1, 0));
+    const sampleY = clamp(Math.round(pagePoint.y), 0, Math.max(canvas.height - 1, 0));
+    const [r, g, b, a] = context.getImageData(sampleX, sampleY, 1, 1).data;
+    if (a === 0) return 'white' as const;
+    const luminance = (0.2126 * r) + (0.7152 * g) + (0.0722 * b);
+    return luminance >= 235 ? 'black' : 'white';
+  };
+
   const updateMouseTracking = (e: React.PointerEvent<HTMLDivElement>) => {
     const viewport = viewportRef.current;
     if (!viewport) return;
     const rect = viewport.getBoundingClientRect();
+    const nextPagePoint = pagePointFromEvent(e.clientX, e.clientY);
     setMouseViewport({ x: e.clientX - rect.left, y: e.clientY - rect.top, visible: true });
-    setMousePage(pagePointFromEvent(e.clientX, e.clientY));
+    setMousePage(nextPagePoint);
+    setCursorContrastColor(resolveCursorContrastColor(nextPagePoint));
   };
 
   const startSelection = (point: Point, ctrlKey: boolean) => {
@@ -1378,6 +1395,14 @@ export default function Plans() {
     await reloadCurrentPageAnnotations(activeDrawingId, activePageId, { preserveSelection: true });
   };
 
+  const handleApplyStartDateToSelected = async (startDate: string) => {
+    if (!activeDrawingId || !activePageId || selectedIds.length === 0 || !startDate) return;
+    await Promise.all(selectedIds.map((id) => (
+      handleUpdateAnnotationMeta(id, { curingStartDate: startDate })
+    )));
+    await reloadCurrentPageAnnotations(activeDrawingId, activePageId, { preserveSelection: true });
+  };
+
   const handleSaveCalibration = async () => {
     if (!activeDrawingId || !activePageId || !pendingCalibrationLine) return;
     const parsedValue = Number(calibrationDraft.value);
@@ -1464,23 +1489,23 @@ export default function Plans() {
     const baseClass = 'pointer-events-none absolute z-40';
     const style = { left: mouseViewport.x + 10, top: mouseViewport.y + 10 };
     if (activeTool === 'rect') {
-      return <div className={`${baseClass} h-3 w-4 rounded-[2px] border border-black/90 bg-black/10`} style={style} />;
+      return <div className={`${baseClass} h-3 w-4 rounded-[2px] border ${cursorContrastColor === 'black' ? 'border-black bg-black/15' : 'border-white bg-white/15'}`} style={style} />;
     }
     if (activeTool === 'polygon') {
-      return <div className={`${baseClass} h-0 w-0 border-l-[8px] border-r-[8px] border-b-[14px] border-l-transparent border-r-transparent border-b-black/90`} style={style} />;
+      return <div className={`${baseClass} h-0 w-0 border-l-[8px] border-r-[8px] border-b-[14px] border-l-transparent border-r-transparent ${cursorContrastColor === 'black' ? 'border-b-black' : 'border-b-white'}`} style={style} />;
     }
     if (activeTool === 'line') {
-      return <div className={`${baseClass} h-[2px] w-5 rotate-[-22deg] bg-black`} style={style} />;
+      return <div className={`${baseClass} h-[2px] w-5 rotate-[-22deg] ${cursorContrastColor === 'black' ? 'bg-black' : 'bg-white'}`} style={style} />;
     }
     if (activeTool === 'calibrate') {
       return (
         <div className={baseClass} style={style}>
-          <DraftingCompass className="h-4 w-4 text-[#f7c58a]" />
+          <DraftingCompass className={`h-4 w-4 ${cursorContrastColor === 'black' ? 'text-black' : 'text-white'}`} />
         </div>
       );
     }
     if (activeTool === 'point') {
-      return <div className={`${baseClass} h-2 w-2 rounded-full border border-black bg-black/80`} style={style} />;
+      return <div className={`${baseClass} h-2 w-2 rounded-full border ${cursorContrastColor === 'black' ? 'border-black bg-black/80' : 'border-white bg-white/80'}`} style={style} />;
     }
     return null;
   };
@@ -1525,6 +1550,16 @@ export default function Plans() {
       const lineStrokeWidth = calibratedLineStroke ?? strokeWidth;
       return (
         <g key={annotation.id}>
+          {selected && (
+            <polyline
+              points={annotation.points.map((point) => `${point.x},${point.y}`).join(' ')}
+              fill="none"
+              stroke="rgba(0,0,0,0.92)"
+              strokeWidth={lineStrokeWidth + 6}
+              strokeLinejoin="round"
+              strokeLinecap="round"
+            />
+          )}
           <polyline
             points={annotation.points.map((point) => `${point.x},${point.y}`).join(' ')}
             fill="none"
@@ -1542,6 +1577,26 @@ export default function Plans() {
     const halfPointSize = pointSize / 2;
     return (
       <g key={annotation.id}>
+        {selected && (annotation.pointShape === 'square' ? (
+          <rect
+            x={annotation.points[0].x - halfPointSize - 4}
+            y={annotation.points[0].y - halfPointSize - 4}
+            width={pointSize + 8}
+            height={pointSize + 8}
+            fill="none"
+            stroke="rgba(0,0,0,0.92)"
+            strokeWidth={4}
+          />
+        ) : (
+          <circle
+            cx={annotation.points[0].x}
+            cy={annotation.points[0].y}
+            r={(pointSize / 2) + 4}
+            fill="none"
+            stroke="rgba(0,0,0,0.92)"
+            strokeWidth={4}
+          />
+        ))}
         {annotation.pointShape === 'square' ? (
           <rect
             x={annotation.points[0].x - halfPointSize}
@@ -1699,9 +1754,9 @@ export default function Plans() {
 
         {mouseViewport.visible && (
           <>
-            <div className="pointer-events-none absolute left-0 right-0 z-30 h-px bg-black/90" style={{ top: mouseViewport.y }} />
-            <div className="pointer-events-none absolute top-0 bottom-0 z-30 w-px bg-black/90" style={{ left: mouseViewport.x }} />
-            <div className="pointer-events-none absolute z-30 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-black bg-black/15" style={{ left: mouseViewport.x, top: mouseViewport.y }} />
+            <div className={`pointer-events-none absolute left-0 right-0 z-30 h-px ${cursorContrastColor === 'black' ? 'bg-black' : 'bg-white'}`} style={{ top: mouseViewport.y }} />
+            <div className={`pointer-events-none absolute top-0 bottom-0 z-30 w-px ${cursorContrastColor === 'black' ? 'bg-black' : 'bg-white'}`} style={{ left: mouseViewport.x }} />
+            <div className={`pointer-events-none absolute z-30 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border ${cursorContrastColor === 'black' ? 'border-black bg-black/15' : 'border-white bg-white/15'}`} style={{ left: mouseViewport.x, top: mouseViewport.y }} />
             {renderCursorGlyph()}
           </>
         )}
@@ -1752,6 +1807,17 @@ export default function Plans() {
             {showDrawing ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
           </button>
           <button
+            onClick={() => void handleRefreshCurrentPage()}
+            disabled={!activeDrawingId || !activePageId}
+            title="Refresh page elements"
+            className="rounded-xl bg-slate-900 p-2 text-slate-200 transition-colors hover:bg-slate-800 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <RefreshCw
+              className="h-4 w-4"
+              style={refreshingElements ? { animation: 'spin 1.2s linear infinite', transformOrigin: '50% 50%', display: 'block' } : undefined}
+            />
+          </button>
+          <button
             onClick={() => setElementsDrawerOpen((current) => !current)}
             title="Toggle elements drawer"
             className="rounded-xl bg-slate-900 p-2 text-slate-200 transition-colors hover:bg-slate-800 hover:text-white"
@@ -1792,6 +1858,22 @@ export default function Plans() {
           <button className="cursor-not-allowed rounded-xl bg-slate-900/60 p-2 text-slate-500" title="Grouping will be added next">
             <Layers3 className="h-4 w-4" />
           </button>
+        </div>
+      </div>
+
+      <div className="pointer-events-none absolute left-1/2 top-[84px] z-20 -translate-x-1/2">
+        <div className="flex items-center gap-3 whitespace-nowrap text-center text-[13px] font-black tracking-[0.08em] text-black/65">
+          <span>{activeDrawingName || 'No plan selected'}</span>
+          <span className="text-black/35">/</span>
+          <span>{activePageName || 'No page selected'}</span>
+          {(saveState === 'saving' || saveState === 'saved') && (
+            <>
+              <span className="text-black/30">/</span>
+              <span className="text-[11px] uppercase tracking-[0.18em] text-black/45">
+                {saveState === 'saving' ? 'Saving' : 'Saved'}
+              </span>
+            </>
+          )}
         </div>
       </div>
 
@@ -1871,7 +1953,10 @@ export default function Plans() {
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-2xl font-black tracking-tight text-slate-900">Page Elements</h2>
-              <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.22em] text-slate-400">{currentAnnotations.length} loaded</p>
+              <div className="mt-1 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.22em] text-slate-400">
+                <span>{currentAnnotations.length} loaded</span>
+                {refreshingElements && <RefreshCw className="h-3.5 w-3.5 animate-[spin_1.2s_linear_infinite]" />}
+              </div>
             </div>
             <button onClick={() => setElementsDrawerOpen(false)} className="text-slate-400 transition-colors hover:text-slate-700">
               <X className="h-6 w-6" />
@@ -1893,6 +1978,27 @@ export default function Plans() {
             >
               <Eye className="h-4 w-4" />
               Show All
+            </button>
+            <input
+              ref={bulkStartDateInputRef}
+              type="date"
+              className="sr-only"
+              tabIndex={-1}
+              onChange={(event) => void handleApplyStartDateToSelected(event.target.value)}
+            />
+            <button
+              onClick={() => {
+                const input = bulkStartDateInputRef.current;
+                if (!input || selectedIds.length === 0) return;
+                if (typeof input.showPicker === 'function') input.showPicker();
+                else input.click();
+              }}
+              disabled={selectedIds.length === 0}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black uppercase tracking-[0.16em] text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40"
+              type="button"
+            >
+              <Plus className="h-4 w-4" />
+              Start Date
             </button>
           </div>
         </div>
@@ -1987,24 +2093,6 @@ export default function Plans() {
               No elements on this page yet.
             </div>
           )}
-        </div>
-      </div>
-
-      <div className="absolute right-6 top-6 z-20 rounded-2xl border border-slate-800 bg-slate-950/90 px-4 py-3 text-white shadow-xl">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-sm font-black">{activeDrawingName || 'No plan selected'}</p>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{activePageName || 'No page selected'}</p>
-            <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-slate-500">{saveState === 'saving' ? 'Saving' : saveState === 'saved' ? 'Saved' : ''}</p>
-          </div>
-          <button
-            onClick={() => void handleRefreshCurrentPage()}
-            disabled={!activeDrawingId || !activePageId}
-            title="Refresh page elements"
-            className="rounded-xl bg-slate-900 p-2 text-slate-200 transition-colors hover:bg-slate-800 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <RefreshCw className={`h-4 w-4 ${refreshingElements ? 'animate-[spin_1.2s_linear_infinite]' : ''}`} />
-          </button>
         </div>
       </div>
 

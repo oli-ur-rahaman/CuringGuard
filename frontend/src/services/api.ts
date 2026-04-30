@@ -297,6 +297,10 @@ export const userService = {
     const response = await api.get('/users/', { params: { tenant_id: tenantId, role } });
     return response.data;
   },
+  checkEmail: async (email: string, excludeUserId?: number) => {
+    const response = await api.get('/users/check-email', { params: { email, exclude_user_id: excludeUserId } });
+    return response.data as { exists: boolean };
+  },
   create_user: async (data: any) => {
     const response = await api.post('/users/', data);
     return response.data;

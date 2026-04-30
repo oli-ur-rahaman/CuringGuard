@@ -1,0 +1,82 @@
+- generic [ref=e29]:
+  - complementary [ref=e30]:
+    - generic [ref=e32]:
+      - img "CuringGuard Logo" [ref=e33]
+      - generic [ref=e34]: CuringGuard
+    - navigation [ref=e35]:
+      - link "Dashboard" [ref=e36] [cursor=pointer]:
+        - /url: /
+        - img [ref=e37]
+        - generic [ref=e42]: Dashboard
+      - link "Project Hierarchy" [ref=e43] [cursor=pointer]:
+        - /url: /setup
+        - img [ref=e44]
+        - generic [ref=e49]: Project Hierarchy
+      - link "PDF Plans & Canvas" [ref=e50] [cursor=pointer]:
+        - /url: /plans
+        - img [ref=e51]
+        - generic [ref=e53]: PDF Plans & Canvas
+      - link "Contractor Mgmt" [ref=e54] [cursor=pointer]:
+        - /url: /contractors
+        - img [ref=e55]
+        - generic [ref=e60]: Contractor Mgmt
+      - link "Settings" [ref=e61] [cursor=pointer]:
+        - /url: /settings
+        - img [ref=e62]
+        - generic [ref=e65]: Settings
+    - button "Sign Out" [ref=e67]:
+      - img [ref=e68]
+      - generic [ref=e71]: Sign Out
+  - generic [ref=e72]:
+    - banner [ref=e73]:
+      - button [ref=e74]:
+        - img [ref=e75]
+      - generic [ref=e76]:
+        - button [ref=e77]:
+          - img [ref=e78]
+        - generic [ref=e82] [cursor=pointer]: AD
+    - main [ref=e83]:
+      - generic [ref=e124]:
+        - generic [ref=e125]:
+          - generic [ref=e126]:
+            - heading "Contractor Management" [level=1] [ref=e127]:
+              - img [ref=e128]
+              - text: Contractor Management
+            - paragraph [ref=e133]: "Monitor Control: Enroll and manage your contractor accounts."
+          - button "Enroll Contractor" [active] [ref=e134]:
+            - img [ref=e135]
+            - text: Enroll Contractor
+        - table [ref=e138]:
+          - rowgroup [ref=e139]:
+            - row "Contractor Email ID WhatsApp Status Actions" [ref=e140]:
+              - columnheader "Contractor" [ref=e141]
+              - columnheader "Email ID" [ref=e142]
+              - columnheader "WhatsApp" [ref=e143]
+              - columnheader "Status" [ref=e144]
+              - columnheader "Actions" [ref=e145]
+          - rowgroup [ref=e146]:
+            - row "No contractors enrolled yet." [ref=e147]:
+              - cell "No contractors enrolled yet." [ref=e148]
+        - generic [ref=e150]:
+          - generic [ref=e151]:
+            - generic [ref=e152]:
+              - heading "Enroll Contractor" [level=2] [ref=e153]
+              - paragraph [ref=e154]: Create a contractor account linked to your monitor profile.
+            - button [ref=e155]:
+              - img [ref=e156]
+          - generic [ref=e160]:
+            - generic [ref=e161]:
+              - generic [ref=e162]: Name of Contractor
+              - textbox [ref=e163]
+            - generic [ref=e164]:
+              - generic [ref=e165]: Email ID
+              - textbox [ref=e166]: fairooz1@gmail.com
+            - generic [ref=e167]:
+              - generic [ref=e168]: Mobile Number (WhatsApp)
+              - textbox [ref=e169]
+            - generic [ref=e170]:
+              - generic [ref=e171]: Initial Password
+              - textbox [ref=e172]: "1234"
+            - generic [ref=e173]:
+              - button "Cancel" [ref=e174]
+              - button "Save Contractor" [ref=e175]
