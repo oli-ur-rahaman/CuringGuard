@@ -76,6 +76,14 @@ export const curingService = {
       }
     });
     return response.data;
+  },
+  uploadManagedDrawing: async (formData: FormData) => {
+    const response = await api.post('/hierarchy/drawings/upload-managed', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+    return response.data;
   }
 };
 
@@ -110,8 +118,60 @@ export const hierarchyService = {
     });
     return response.data as Blob;
   },
-  createBlankDrawingPage: async (drawingId: number) => {
-    const response = await api.post(`/hierarchy/drawings/${drawingId}/pages/blank`);
+  getDrawingAnnotations: async (drawingId: number, pageId: string) => {
+    const response = await api.get(`/hierarchy/drawings/${drawingId}/annotations`, {
+      params: { page_id: pageId },
+    });
+    return response.data;
+  },
+  deleteDrawingAnnotations: async (drawingId: number, pageId: string, elementIds: string[]) => {
+    const response = await api.delete(`/hierarchy/drawings/${drawingId}/annotations`, {
+      params: { page_id: pageId, element_ids: JSON.stringify(elementIds) },
+    });
+    return response.data;
+  },
+  saveDrawingAnnotations: async (drawingId: number, pageId: string, annotations: any[]) => {
+    const formData = new FormData();
+    formData.append('page_id', pageId);
+    formData.append('annotations', JSON.stringify(annotations));
+    const response = await api.post(`/hierarchy/drawings/${drawingId}/annotations`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+    return response.data;
+  },
+  updateDrawingAnnotation: async (drawingId: number, pageId: string, elementId: string, data: {
+    memberName?: string;
+    color?: string;
+    elementType?: string;
+    curingStartDate?: string;
+  }) => {
+    const formData = new FormData();
+    formData.append('page_id', pageId);
+    if (data.memberName !== undefined) formData.append('member_name', data.memberName);
+    if (data.color !== undefined) formData.append('color', data.color);
+    if (data.elementType !== undefined) formData.append('element_type', data.elementType);
+    if (data.curingStartDate !== undefined) formData.append('curing_start_date', data.curingStartDate);
+    const response = await api.patch(`/hierarchy/drawings/${drawingId}/annotations/${elementId}`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+    return response.data;
+  },
+  createBlankDrawingPage: async (drawingId: number, name: string) => {
+    const formData = new FormData();
+    formData.append('name', name);
+    const response = await api.post(`/hierarchy/drawings/${drawingId}/pages/blank`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+    return response.data;
+  },
+  deleteDrawingPage: async (drawingId: number, pageId: string) => {
+    const response = await api.delete(`/hierarchy/drawings/${drawingId}/pages/${encodeURIComponent(pageId)}`);
     return response.data;
   },
   getDrawingCanvasData: async (drawingId: number, pageId?: string) => {
@@ -128,6 +188,28 @@ export const hierarchyService = {
     const response = await api.delete(`/hierarchy/drawings/${drawingId}`);
     return response.data;
   },
+  updateDrawing: async (drawingId: number, data: any) => {
+    const response = await api.patch(`/hierarchy/drawings/${drawingId}`, data);
+    return response.data;
+  },
+  createBlankDrawing: async (structureId: number, name: string) => {
+    const formData = new FormData();
+    formData.append('name', name);
+    const response = await api.post(`/hierarchy/structures/${structureId}/drawings/blank`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+    return response.data;
+  },
+  uploadManagedDrawing: async (formData: FormData) => {
+    const response = await api.post('/hierarchy/drawings/upload-managed', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+    return response.data;
+  },
   createTenant: async (data: any) => {
     const response = await api.post('/hierarchy/tenants', data);
     return response.data;
@@ -136,12 +218,36 @@ export const hierarchyService = {
     const response = await api.post('/hierarchy/projects', data);
     return response.data;
   },
+  updateProject: async (projectId: number, data: any) => {
+    const response = await api.patch(`/hierarchy/projects/${projectId}`, data);
+    return response.data;
+  },
+  deleteProject: async (projectId: number) => {
+    const response = await api.delete(`/hierarchy/projects/${projectId}`);
+    return response.data;
+  },
   createPackage: async (data: any) => {
     const response = await api.post('/hierarchy/packages', data);
     return response.data;
   },
+  updatePackage: async (packageId: number, data: any) => {
+    const response = await api.patch(`/hierarchy/packages/${packageId}`, data);
+    return response.data;
+  },
+  deletePackage: async (packageId: number) => {
+    const response = await api.delete(`/hierarchy/packages/${packageId}`);
+    return response.data;
+  },
   createStructure: async (data: any) => {
     const response = await api.post('/hierarchy/structures', data);
+    return response.data;
+  },
+  updateStructure: async (structureId: number, data: any) => {
+    const response = await api.patch(`/hierarchy/structures/${structureId}`, data);
+    return response.data;
+  },
+  deleteStructure: async (structureId: number) => {
+    const response = await api.delete(`/hierarchy/structures/${structureId}`);
     return response.data;
   },
   assignContractor: async (structureId: number, contractorId: number) => {

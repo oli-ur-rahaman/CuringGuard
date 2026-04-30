@@ -1,0 +1,96 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - generic [ref=e6]:
+      - img "CuringGuard Logo" [ref=e7]
+      - generic [ref=e8]: CuringGuard
+    - navigation [ref=e9]:
+      - link "Dashboard" [ref=e10] [cursor=pointer]:
+        - /url: /
+        - img [ref=e11]
+        - generic [ref=e16]: Dashboard
+      - link "Project Hierarchy" [ref=e17] [cursor=pointer]:
+        - /url: /setup
+        - img [ref=e18]
+        - generic [ref=e23]: Project Hierarchy
+      - link "PDF Plans & Canvas" [ref=e24] [cursor=pointer]:
+        - /url: /plans
+        - img [ref=e25]
+        - generic [ref=e27]: PDF Plans & Canvas
+      - link "Contractor Mgmt" [ref=e28] [cursor=pointer]:
+        - /url: /contractors
+        - img [ref=e29]
+        - generic [ref=e34]: Contractor Mgmt
+      - link "Settings" [ref=e35] [cursor=pointer]:
+        - /url: /settings
+        - img [ref=e36]
+        - generic [ref=e39]: Settings
+    - button "Sign Out" [ref=e41]:
+      - img [ref=e42]
+      - generic [ref=e45]: Sign Out
+  - generic [ref=e46]:
+    - banner [ref=e47]:
+      - button [ref=e48]:
+        - img [ref=e49]
+      - generic [ref=e50]:
+        - button [ref=e51]:
+          - img [ref=e52]
+        - generic [ref=e56] [cursor=pointer]: AD
+    - main [ref=e57]:
+      - generic [ref=e58]:
+        - img [ref=e63]
+        - generic [ref=e64]:
+          - button "Selection" [ref=e65]:
+            - img [ref=e66]
+          - button "Hand Pan" [ref=e68]:
+            - img [ref=e69]
+          - button "Rectangle" [ref=e74]:
+            - img [ref=e75]
+          - button "Polygon" [ref=e77]:
+            - img [ref=e78]
+          - button "Line" [ref=e80]:
+            - img [ref=e81]
+          - button "Point" [ref=e83]:
+            - img [ref=e84]
+        - generic [ref=e87]:
+          - button [ref=e88]:
+            - img [ref=e89]
+          - button [ref=e92]:
+            - img [ref=e93]
+          - button [ref=e96]:
+            - img [ref=e97]
+          - button [ref=e104]:
+            - img [ref=e105]
+          - button "Close current drawing" [disabled] [ref=e108]:
+            - img [ref=e109]
+          - button "Delete selected elements" [disabled] [ref=e112]:
+            - img [ref=e113]
+          - button "Edit selected elements" [disabled] [ref=e116]:
+            - img [ref=e117]
+          - button "Grouping will be added next" [ref=e120]:
+            - img [ref=e121]
+        - generic [ref=e125]:
+          - generic [ref=e126]:
+            - generic [ref=e127]:
+              - heading "Plan Manager" [level=2] [ref=e128]
+              - button [ref=e129]:
+                - img [ref=e130]
+            - button "ADD PLAN FILE" [disabled] [ref=e133]:
+              - img [ref=e134]
+              - text: ADD PLAN FILE
+          - generic [ref=e136]: No structure plans linked.
+        - button "Plan Explorer" [ref=e137]:
+          - img [ref=e138]
+          - text: Plan Explorer
+        - generic [ref=e141]:
+          - generic [ref=e142]:
+            - paragraph [ref=e143]: No plan selected
+            - paragraph [ref=e144]: No page selected
+            - paragraph
+          - button "Refresh page elements" [disabled] [ref=e145]:
+            - img [ref=e146]
+        - button [disabled] [ref=e155]:
+          - img [ref=e157]
+        - generic:
+          - generic:
+            - img
+            - text: Loading plan

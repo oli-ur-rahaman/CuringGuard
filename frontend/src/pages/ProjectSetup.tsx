@@ -2,13 +2,42 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Building2, PackageOpen, FolderGit2, 
-  ChevronRight, Plus, UserPlus, HardHat, MoreVertical, ChevronDown, Loader2, Trash2, FileText, ExternalLink
+  ChevronRight, Plus, UserPlus, HardHat, ChevronDown, Loader2, Trash2, FileText, PenSquare
 } from 'lucide-react';
 import { hierarchyService, userService, authService, curingService } from '../services/api';
 
+const HIERARCHY_VIEW_KEY = 'curingguard.hierarchy.view';
+
+type HierarchyViewState = {
+  projectId: number;
+  packageId: number;
+  mode: 'total' | 'structures';
+};
+
+const loadHierarchyView = (): HierarchyViewState => {
+  try {
+    const raw = localStorage.getItem(HIERARCHY_VIEW_KEY);
+    if (!raw) return { projectId: 0, packageId: 0, mode: 'total' as const };
+    const parsed = JSON.parse(raw);
+    return {
+      projectId: Number(parsed?.projectId) || 0,
+      packageId: Number(parsed?.packageId) || 0,
+      mode: parsed?.mode === 'structures' ? 'structures' : 'total',
+    };
+  } catch {
+    return { projectId: 0, packageId: 0, mode: 'total' as const };
+  }
+};
+
+const saveHierarchyView = (projectId: number, packageId: number, mode: 'total' | 'structures') => {
+  localStorage.setItem(HIERARCHY_VIEW_KEY, JSON.stringify({ projectId, packageId, mode }));
+};
+
 export default function ProjectSetup() {
-  const [activeProject, setActiveProject] = useState<number>(0);
-  const [activePackage, setActivePackage] = useState<number>(0);
+  const persistedViewRef = useRef(loadHierarchyView());
+  const [activeProject, setActiveProject] = useState<number>(persistedViewRef.current.projectId);
+  const [activePackage, setActivePackage] = useState<number>(persistedViewRef.current.packageId);
+  const [viewMode, setViewMode] = useState<'total' | 'structures'>(persistedViewRef.current.mode);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
@@ -26,6 +55,31 @@ export default function ProjectSetup() {
   const user = authService.getCurrentUser();
   const user_id = user ? user.user_id : 0;
 
+  const refreshPackages = async (projectId: number, preferredPackageId?: number) => {
+    const pkgData = await hierarchyService.getPackages(projectId);
+    setPackages(pkgData);
+    const nextPackageId = preferredPackageId && pkgData.some((pkg: any) => pkg.id === preferredPackageId)
+      ? preferredPackageId
+      : (pkgData[0]?.id || 0);
+    setActivePackage(nextPackageId);
+    return { pkgData, nextPackageId };
+  };
+
+  const refreshStructures = async (packageId: number) => {
+    if (!packageId) {
+      setStructures([]);
+      setDrawingsByStructure({});
+      return [];
+    }
+    const strData = await hierarchyService.getStructures(packageId);
+    setStructures(strData);
+    const drawingEntries = await Promise.all(
+      strData.map(async (structure: any) => [structure.id, await hierarchyService.getDrawings(structure.id)] as const)
+    );
+    setDrawingsByStructure(Object.fromEntries(drawingEntries));
+    return strData;
+  };
+
   const fetchData = async () => {
     if (!user_id) return;
     try {
@@ -36,7 +90,13 @@ export default function ProjectSetup() {
       ]);
       setProjects(projData);
       setContractors(conData);
-      if (projData.length > 0) setActiveProject(projData[0].id);
+      if (projData.length > 0) {
+        const restoredProjectId = persistedViewRef.current.projectId;
+        const nextProjectId = restoredProjectId && projData.some((project: any) => project.id === restoredProjectId)
+          ? restoredProjectId
+          : projData[0].id;
+        setActiveProject(nextProjectId);
+      }
     } catch (error) {
       console.error("Failed to load setup data", error);
     } finally {
@@ -53,10 +113,10 @@ export default function ProjectSetup() {
   useEffect(() => {
     if (activeProject) {
       const fetchPackages = async () => {
-        const pkgData = await hierarchyService.getPackages(activeProject);
-        setPackages(pkgData);
-        if (pkgData.length > 0) setActivePackage(pkgData[0].id);
-        else setActivePackage(0);
+        const preferredPackageId = activeProject === persistedViewRef.current.projectId
+          ? persistedViewRef.current.packageId
+          : undefined;
+        await refreshPackages(activeProject, preferredPackageId);
       };
       fetchPackages();
     }
@@ -65,12 +125,7 @@ export default function ProjectSetup() {
   useEffect(() => {
     if (activePackage) {
       const fetchStructures = async () => {
-        const strData = await hierarchyService.getStructures(activePackage);
-        setStructures(strData);
-        const drawingEntries = await Promise.all(
-          strData.map(async (structure: any) => [structure.id, await hierarchyService.getDrawings(structure.id)] as const)
-        );
-        setDrawingsByStructure(Object.fromEntries(drawingEntries));
+        await refreshStructures(activePackage);
       };
       fetchStructures();
     } else {
@@ -78,6 +133,10 @@ export default function ProjectSetup() {
       setDrawingsByStructure({});
     }
   }, [activePackage]);
+
+  useEffect(() => {
+    saveHierarchyView(activeProject, activePackage, viewMode);
+  }, [activeProject, activePackage, viewMode]);
 
   const handleAddProject = async () => {
     const name = window.prompt("Enter new Project name:");
@@ -96,8 +155,7 @@ export default function ProjectSetup() {
     if (!name) return;
     try {
       await hierarchyService.createPackage({ name, project_id: activeProject });
-      const pkgData = await hierarchyService.getPackages(activeProject);
-      setPackages(pkgData);
+      const { pkgData } = await refreshPackages(activeProject);
       setActivePackage(pkgData[pkgData.length - 1].id);
     } catch (e: any) {
       alert("Error adding package: " + e.message);
@@ -110,8 +168,7 @@ export default function ProjectSetup() {
     if (!name) return;
     try {
       await hierarchyService.createStructure({ name, package_id: activePackage });
-      const strData = await hierarchyService.getStructures(activePackage);
-      setStructures(strData);
+      await refreshStructures(activePackage);
     } catch (e: any) {
       alert("Error adding structure: " + e.message);
     }
@@ -121,16 +178,105 @@ export default function ProjectSetup() {
     if (!contractorId) return;
     try {
       await hierarchyService.assignContractor(structureId, contractorId);
-      const strData = await hierarchyService.getStructures(activePackage);
-      setStructures(strData);
+      await refreshStructures(activePackage);
     } catch (e: any) {
       alert("Error assigning contractor: " + e.message);
+    }
+  };
+
+  const handleEditProject = async (projectId: number, currentName: string) => {
+    const name = window.prompt('Edit project name:', currentName);
+    if (!name || !name.trim()) return;
+    try {
+      await hierarchyService.updateProject(projectId, { name: name.trim() });
+      await fetchData();
+      setActiveProject(projectId);
+    } catch (error: any) {
+      alert(error.response?.data?.detail || 'Failed to update project.');
+    }
+  };
+
+  const handleDeleteProject = async (projectId: number, projectName: string) => {
+    if (!window.confirm(`Soft delete project "${projectName}"?`)) return;
+    try {
+      await hierarchyService.deleteProject(projectId);
+      const remainingProjects = projects.filter((project) => project.id !== projectId);
+      setProjects(remainingProjects);
+      const nextProjectId = remainingProjects[0]?.id || 0;
+      setActiveProject(nextProjectId);
+      if (!nextProjectId) {
+        setPackages([]);
+        setActivePackage(0);
+        setStructures([]);
+        setDrawingsByStructure({});
+      }
+    } catch (error: any) {
+      alert(error.response?.data?.detail || 'Failed to delete project.');
+    }
+  };
+
+  const handleEditPackage = async (packageId: number, currentName: string) => {
+    const name = window.prompt('Edit package name:', currentName);
+    if (!name || !name.trim()) return;
+    try {
+      await hierarchyService.updatePackage(packageId, { name: name.trim() });
+      await refreshPackages(activeProject, packageId);
+    } catch (error: any) {
+      alert(error.response?.data?.detail || 'Failed to update package.');
+    }
+  };
+
+  const handleDeletePackage = async (packageId: number, packageName: string) => {
+    if (!window.confirm(`Soft delete package "${packageName}"?`)) return;
+    try {
+      await hierarchyService.deletePackage(packageId);
+      const remainingPackages = packages.filter((pkg) => pkg.id !== packageId);
+      setPackages(remainingPackages);
+      const nextPackageId = remainingPackages[0]?.id || 0;
+      setActivePackage(nextPackageId);
+      await refreshStructures(nextPackageId);
+    } catch (error: any) {
+      alert(error.response?.data?.detail || 'Failed to delete package.');
+    }
+  };
+
+  const handleEditStructure = async (structureId: number, currentName: string) => {
+    const name = window.prompt('Edit structure name:', currentName);
+    if (!name || !name.trim()) return;
+    try {
+      await hierarchyService.updateStructure(structureId, { name: name.trim() });
+      await refreshStructures(activePackage);
+    } catch (error: any) {
+      alert(error.response?.data?.detail || 'Failed to update structure.');
+    }
+  };
+
+  const handleDeleteStructure = async (structureId: number, structureName: string) => {
+    if (!window.confirm(`Soft delete structure "${structureName}"?`)) return;
+    try {
+      await hierarchyService.deleteStructure(structureId);
+      await refreshStructures(activePackage);
+    } catch (error: any) {
+      alert(error.response?.data?.detail || 'Failed to delete structure.');
     }
   };
 
   const handleStructureUploadClick = (structureId: number) => {
     setSelectedStructureForUpload(structureId);
     fileInputRef.current?.click();
+  };
+
+  const handleCreateBlankDrawing = async (structureId: number) => {
+    const name = window.prompt('Enter blank drawing name:');
+    if (!name || !name.trim()) return;
+
+    try {
+      await hierarchyService.createBlankDrawing(structureId, name.trim());
+      const updatedDrawings = await hierarchyService.getDrawings(structureId);
+      setDrawingsByStructure(prev => ({ ...prev, [structureId]: updatedDrawings }));
+    } catch (error: any) {
+      alert(error.response?.data?.detail || 'Failed to create blank drawing.');
+    }
   };
 
   const handleStructureFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -147,12 +293,12 @@ export default function ProjectSetup() {
       await curingService.uploadDrawing(formData);
       const updatedDrawings = await hierarchyService.getDrawings(selectedStructureForUpload);
       setDrawingsByStructure(prev => ({ ...prev, [selectedStructureForUpload]: updatedDrawings }));
-      alert('PDF upload complete.');
+      alert('Plan upload complete.');
     } catch (error: any) {
       const detail = error.response?.data?.detail;
       const message = Array.isArray(detail)
         ? detail.map((item: any) => item.msg || item.message || JSON.stringify(item)).join('\n')
-        : detail || 'Failed to upload PDF.';
+        : detail || 'Failed to upload plan.';
       alert(message);
     } finally {
       setUploadingStructureId(null);
@@ -162,7 +308,7 @@ export default function ProjectSetup() {
   };
 
   const handleDeleteDrawing = async (structureId: number, drawingId: number, drawingName: string) => {
-    const confirmed = window.confirm(`Delete PDF "${drawingName}" from record and storage?`);
+    const confirmed = window.confirm(`Delete plan file "${drawingName}" from record and storage?`);
     if (!confirmed) return;
 
     try {
@@ -173,9 +319,22 @@ export default function ProjectSetup() {
         [structureId]: (prev[structureId] || []).filter(drawing => drawing.id !== drawingId),
       }));
     } catch (error: any) {
-      alert(error.response?.data?.detail || 'Failed to delete PDF.');
+      alert(error.response?.data?.detail || 'Failed to delete plan file.');
     } finally {
       setDeletingDrawingId(null);
+    }
+  };
+
+  const handleEditDrawing = async (structureId: number, drawingId: number, currentName: string) => {
+    const name = window.prompt('Edit plan name:', currentName);
+    if (!name || !name.trim()) return;
+
+    try {
+      await hierarchyService.updateDrawing(drawingId, { name: name.trim() });
+      const updatedDrawings = await hierarchyService.getDrawings(structureId);
+      setDrawingsByStructure(prev => ({ ...prev, [structureId]: updatedDrawings }));
+    } catch (error: any) {
+      alert(error.response?.data?.detail || 'Failed to update plan name.');
     }
   };
 
@@ -194,16 +353,30 @@ export default function ProjectSetup() {
             <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight">Hierarchy Configuration</h1>
             <p className="text-sm md:text-base text-slate-500 font-medium tracking-wide">Monitor Dashboard: Define architectural scope and deploy contractors.</p>
          </div>
+         <div className="inline-flex rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
+            <button
+              onClick={() => setViewMode('total')}
+              className={`rounded-xl px-4 py-2 text-sm font-extrabold transition-colors ${viewMode === 'total' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:text-slate-900'}`}
+            >
+              Total View
+            </button>
+            <button
+              onClick={() => setViewMode('structures')}
+              className={`rounded-xl px-4 py-2 text-sm font-extrabold transition-colors ${viewMode === 'structures' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:text-slate-900'}`}
+            >
+              Structure View
+            </button>
+         </div>
       </div>
       <input
         ref={fileInputRef}
         type="file"
-        accept=".pdf"
+        accept=".pdf,.png,.jpg,.jpeg,.webp,.bmp,.gif"
         className="hidden"
         onChange={handleStructureFileUpload}
       />
 
-      {/* THREE COLUMN ARCHITECTURE (Finder Style) */}
+      {viewMode === 'total' ? (
       <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-4 md:gap-6 overflow-y-auto lg:overflow-hidden pb-10 lg:pb-0">
          
          {/* COLUMN 1: PROJECTS */}
@@ -223,7 +396,15 @@ export default function ProjectSetup() {
                        <h3 className={`font-extrabold ${activeProject === p.id ? 'text-blue-900' : 'text-slate-800'}`}>{p.name}</h3>
                        <span className="text-[10px] font-extrabold uppercase tracking-widest px-2.5 py-1 rounded-full mt-2 inline-block shadow-sm border bg-green-100 text-green-800 border-green-200">Active</span>
                     </div>
-                    <ChevronRight className={`w-5 h-5 ${activeProject === p.id ? 'text-blue-500' : 'text-slate-300'}`} />
+                    <div className="flex items-center gap-2">
+                      <button onClick={(e) => { e.stopPropagation(); void handleEditProject(p.id, p.name); }} className="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-slate-700">
+                        <PenSquare className="w-4 h-4" />
+                      </button>
+                      <button onClick={(e) => { e.stopPropagation(); void handleDeleteProject(p.id, p.name); }} className="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-red-600">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                      <ChevronRight className={`w-5 h-5 ${activeProject === p.id ? 'text-blue-500' : 'text-slate-300'}`} />
+                    </div>
                  </div>
                ))}
             </div>
@@ -243,7 +424,15 @@ export default function ProjectSetup() {
                  <div key={pkg.id} onClick={() => setActivePackage(pkg.id)} 
                       className={`p-4 rounded-2xl cursor-pointer border-2 transition-all flex items-center justify-between ${activePackage === pkg.id ? 'border-amber-500 bg-amber-50 shadow-md ring-4 ring-amber-500/10' : 'border-slate-200/50 hover:border-slate-300 bg-white shadow-sm'}`}>
                     <h3 className={`font-extrabold ${activePackage === pkg.id ? 'text-amber-900' : 'text-slate-800'}`}>{pkg.name}</h3>
-                    <ChevronRight className={`w-5 h-5 ${activePackage === pkg.id ? 'text-amber-500' : 'text-slate-300'}`} />
+                    <div className="flex items-center gap-2">
+                      <button onClick={(e) => { e.stopPropagation(); void handleEditPackage(pkg.id, pkg.name); }} className="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-slate-700">
+                        <PenSquare className="w-4 h-4" />
+                      </button>
+                      <button onClick={(e) => { e.stopPropagation(); void handleDeletePackage(pkg.id, pkg.name); }} className="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-red-600">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                      <ChevronRight className={`w-5 h-5 ${activePackage === pkg.id ? 'text-amber-500' : 'text-slate-300'}`} />
+                    </div>
                  </div>
                ))}
                {activeProject === 0 && (
@@ -269,87 +458,124 @@ export default function ProjectSetup() {
                  structures.length > 0 ? structures.map(s => {
                     const assignedCon = contractors.find(c => c.id === s.contractor_id);
                     return (
-                      <div key={s.id} className="p-5 rounded-2xl border-2 border-slate-200 bg-white hover:border-purple-300 transition-all shadow-sm group">
-                        <div className="flex justify-between items-start mb-2">
-                            <h3 className="font-extrabold text-slate-900 text-lg xl:text-xl leading-tight">{s.name}</h3>
-                            <button className="text-slate-400 hover:text-slate-600"><MoreVertical className="w-5 h-5" /></button>
-                        </div>
-
-                        {/* Action Portal Buttons */}
-                        <div className="flex gap-2 mb-5">
-                            <button onClick={() => handleStructureUploadClick(s.id)} disabled={uploadingStructureId === s.id} className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-indigo-50 border border-indigo-200 rounded-lg text-indigo-700 font-bold hover:bg-indigo-100 hover:border-indigo-300 transition-all text-[11px] lg:text-xs shadow-sm active:scale-95 disabled:opacity-60">
-                              {uploadingStructureId === s.id ? <Loader2 className="w-3.5 h-3.5 flex-shrink-0 animate-spin" /> : <Plus className="w-3.5 h-3.5 flex-shrink-0" />} Upload PDF
+                      <div key={s.id} className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.06)] transition-all hover:border-slate-300 hover:shadow-[0_18px_38px_rgba(15,23,42,0.08)]">
+                        <div className="mb-4 flex items-start justify-between gap-3">
+                          <h3 className="text-[30px] font-black tracking-tight text-slate-900 leading-none">{s.name}</h3>
+                          <div className="flex items-center gap-1">
+                            <button onClick={() => void handleEditStructure(s.id, s.name)} className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700">
+                              <PenSquare className="h-4 w-4" />
                             </button>
+                            <button onClick={() => void handleDeleteStructure(s.id, s.name)} className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-red-600">
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
                         </div>
 
-                        <div className="mb-5 rounded-xl border border-slate-200 bg-slate-50/80 p-4">
-                            <div className="mb-3 text-[11px] font-extrabold uppercase tracking-widest text-slate-500">
-                              Uploaded Plans
-                            </div>
-                            <div className="space-y-2">
-                              {(drawingsByStructure[s.id] || []).length > 0 ? (
-                                (drawingsByStructure[s.id] || []).map((drawing) => (
-                                  <div key={drawing.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2">
-                                    <div className="flex min-w-0 items-center gap-2">
-                                      <FileText className="h-4 w-4 flex-shrink-0 text-indigo-500" />
-                                      <span className="truncate text-xs font-bold text-slate-700">{drawing.name}</span>
+                        <div className="rounded-[22px] border border-white bg-white px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.8),0_8px_24px_rgba(15,23,42,0.04)]">
+                          <div className="mb-4">
+                            <span className="inline-flex rounded-sm border border-white bg-white px-2 py-0.5 text-[11px] font-extrabold uppercase tracking-[0.18em] text-slate-600 shadow-sm">
+                              Assigned Contractor
+                            </span>
+                          </div>
+
+                          <div className="mb-4 flex gap-3">
+                            <div className="flex-1">
+                              {assignedCon ? (
+                                <div className="flex h-[52px] items-center justify-between rounded-[18px] border border-white bg-white px-4 shadow-sm">
+                                  <div className="flex items-center gap-3">
+                                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-900">
+                                      <HardHat className="h-4 w-4 text-amber-400" />
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                      <button
-                                        onClick={() => navigate(`/plans?structureId=${s.id}&drawingId=${drawing.id}`)}
-                                        className="flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-extrabold uppercase tracking-wider text-blue-700 transition-colors hover:bg-blue-100"
-                                      >
-                                        <ExternalLink className="h-3 w-3" />
-                                        Open
-                                      </button>
-                                      <button
-                                        onClick={() => handleDeleteDrawing(s.id, drawing.id, drawing.name)}
-                                        disabled={deletingDrawingId === drawing.id}
-                                        className="flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[10px] font-extrabold uppercase tracking-wider text-red-600 transition-colors hover:bg-red-100 disabled:opacity-60"
-                                      >
-                                        {deletingDrawingId === drawing.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
-                                        Delete
-                                      </button>
-                                    </div>
+                                    <span className="text-sm font-extrabold text-slate-900">{assignedCon.username}</span>
                                   </div>
-                                ))
+                                  <button className="text-[11px] font-extrabold uppercase tracking-wider text-red-500 hover:text-red-700">Revoke</button>
+                                </div>
                               ) : (
-                                <div className="text-xs font-bold text-slate-400">No PDFs uploaded yet.</div>
+                                <div className="relative">
+                                  <select
+                                    className="appearance-none h-[52px] w-full rounded-[18px] border-2 border-dashed border-white bg-white py-3 pl-10 pr-10 text-[12px] font-extrabold tracking-wide text-slate-600 shadow-sm transition-all hover:border-slate-200 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+                                    onChange={(e) => handleAssignContractor(s.id, Number(e.target.value))}
+                                    defaultValue=""
+                                  >
+                                    <option value="" disabled>DEPLOY CONTRACTOR...</option>
+                                    {contractors.map(c => (
+                                      <option key={c.id} value={c.id}>{c.username}</option>
+                                    ))}
+                                  </select>
+                                  <UserPlus className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                                  <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                                </div>
                               )}
                             </div>
+
+                            <button className="h-[52px] min-w-[170px] rounded-[18px] border border-white bg-[linear-gradient(180deg,#eef5ff_0%,#dfeeff_100%)] px-4 text-[12px] font-extrabold text-blue-700 shadow-sm transition-all hover:border-white hover:bg-[linear-gradient(180deg,#e7f0ff_0%,#d6e8ff_100%)]">
+                              + Create Contractor
+                            </button>
+                          </div>
+
+                          <div>
+                            <div className="mb-3">
+                              <span className="inline-flex rounded-sm border border-white bg-white px-2 py-0.5 text-[11px] font-extrabold uppercase tracking-[0.18em] text-slate-600 shadow-sm">
+                                Plans
+                              </span>
+                            </div>
+
+                            <div className="min-h-[94px] rounded-[18px] border border-white bg-white px-2 py-2">
+                              {(drawingsByStructure[s.id] || []).length > 0 ? (
+                                <div className="space-y-2">
+                                  {(drawingsByStructure[s.id] || []).map((drawing) => (
+                                    <div
+                                      key={drawing.id}
+                                      onClick={() => navigate(`/plans?structureId=${s.id}&drawingId=${drawing.id}`)}
+                                      className="group/plan flex items-center gap-3 rounded-xl border border-transparent px-2 py-2 transition-all hover:border-slate-200 hover:bg-slate-50"
+                                    >
+                                      <div className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left">
+                                        <FileText className="h-4 w-4 flex-shrink-0 text-indigo-500" />
+                                        <span className="truncate text-sm font-bold text-slate-800 group-hover/plan:text-blue-700">
+                                          {drawing.name}
+                                        </span>
+                                      </div>
+
+                                      <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover/plan:opacity-100">
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            void handleEditDrawing(s.id, drawing.id, drawing.name);
+                                          }}
+                                          className="rounded-md border border-slate-200 bg-white p-1.5 text-slate-500 transition-colors hover:border-slate-300 hover:text-slate-800"
+                                        >
+                                          <PenSquare className="h-3.5 w-3.5" />
+                                        </button>
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            void handleDeleteDrawing(s.id, drawing.id, drawing.name);
+                                          }}
+                                          disabled={deletingDrawingId === drawing.id}
+                                          className="rounded-md border border-red-200 bg-red-50 p-1.5 text-red-500 transition-colors hover:border-red-300 hover:bg-red-100 hover:text-red-600 disabled:opacity-60"
+                                        >
+                                          {deletingDrawingId === drawing.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="flex h-[78px] items-center justify-center">
+                                  <span className="rounded-sm bg-slate-100 px-2 py-1 text-xs font-bold text-slate-500">No plan files uploaded yet.</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
                         </div>
 
-                        {/* Contractor Assignment Zone */}
-                        <div className="bg-slate-100/50 rounded-xl p-4 border border-slate-200">
-                            <div className="text-[11px] font-extrabold text-slate-500 uppercase tracking-widest mb-3 flex items-center justify-between">
-                              Assigned Contractor
-                              {assignedCon && <span className="bg-green-200/80 text-green-900 px-2.5 py-0.5 rounded-full text-[9px] shadow-[0_1px_2px_rgba(0,0,0,0.1)]">Operating</span>}
-                            </div>
-                            
-                            {assignedCon ? (
-                              <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-full bg-slate-900 flex items-center justify-center shadow-md"><HardHat className="w-5 h-5 text-amber-500" /></div>
-                                    <span className="font-extrabold text-slate-900 text-sm xl:text-base">{assignedCon.username}</span>
-                                  </div>
-                                  <button className="text-[11px] font-extrabold text-red-500 hover:text-red-700 uppercase tracking-wider bg-red-50 px-2 py-1 rounded-md transition-colors hover:bg-red-100 border border-red-100">Revoke</button>
-                              </div>
-                            ) : (
-                              <div className="relative">
-                                <select 
-                                  className="appearance-none w-full bg-white border-2 border-dashed border-slate-300 rounded-xl py-3 pl-10 pr-10 hover:border-purple-400 focus:outline-none focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 transition-all text-slate-600 font-extrabold text-[11px] lg:text-xs tracking-wide cursor-pointer shadow-sm"
-                                  onChange={(e) => handleAssignContractor(s.id, Number(e.target.value))}
-                                  defaultValue=""
-                                >
-                                  <option value="" disabled>DEPLOY CONTRACTOR...</option>
-                                  {contractors.map(c => (
-                                    <option key={c.id} value={c.id}>{c.username}</option>
-                                  ))}
-                                </select>
-                                <UserPlus className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                                <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                              </div>
-                            )}
+                        <div className="mt-4 flex gap-3">
+                          <button onClick={() => handleStructureUploadClick(s.id)} disabled={uploadingStructureId === s.id} className="flex h-[48px] flex-1 items-center justify-center gap-2 rounded-[14px] border border-blue-200 bg-[linear-gradient(180deg,#eef5ff_0%,#dfeeff_100%)] px-4 text-[13px] font-extrabold text-blue-700 transition-all hover:border-blue-300 hover:bg-[linear-gradient(180deg,#e7f0ff_0%,#d6e8ff_100%)] active:scale-[0.99] disabled:opacity-60">
+                            {uploadingStructureId === s.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Upload Plan
+                          </button>
+                          <button onClick={() => handleCreateBlankDrawing(s.id)} className="flex h-[48px] flex-1 items-center justify-center gap-2 rounded-[14px] border border-slate-200 bg-[linear-gradient(180deg,#f5f7fb_0%,#ebeff5_100%)] px-4 text-[13px] font-extrabold text-slate-700 transition-all hover:border-slate-300 hover:bg-[linear-gradient(180deg,#eef2f8_0%,#e4e9f1_100%)] active:scale-[0.99]">
+                            <FileText className="h-4 w-4" /> Blank Drawing
+                          </button>
                         </div>
                       </div>
                     );
@@ -369,6 +595,146 @@ export default function ProjectSetup() {
          </div>
 
       </div>
+      ) : (
+      <div className="flex-1 overflow-y-auto pb-10">
+         {structures.length > 0 ? (
+           <div className="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-5">
+             {structures.map(s => {
+               const assignedCon = contractors.find(c => c.id === s.contractor_id);
+               return (
+                 <div key={s.id} className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.06)] transition-all hover:border-slate-300 hover:shadow-[0_18px_38px_rgba(15,23,42,0.08)]">
+                   <div className="mb-4 flex items-start justify-between gap-3">
+                     <h3 className="text-[30px] font-black tracking-tight text-slate-900 leading-none">{s.name}</h3>
+                     <div className="flex items-center gap-1">
+                       <button onClick={() => void handleEditStructure(s.id, s.name)} className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700">
+                         <PenSquare className="h-4 w-4" />
+                       </button>
+                       <button onClick={() => void handleDeleteStructure(s.id, s.name)} className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-red-600">
+                         <Trash2 className="h-4 w-4" />
+                       </button>
+                     </div>
+                   </div>
+
+                   <div className="rounded-[22px] border border-white bg-white px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.8),0_8px_24px_rgba(15,23,42,0.04)]">
+                     <div className="mb-4">
+                       <span className="inline-flex rounded-sm border border-white bg-white px-2 py-0.5 text-[11px] font-extrabold uppercase tracking-[0.18em] text-slate-600 shadow-sm">
+                         Assigned Contractor
+                       </span>
+                     </div>
+
+                     <div className="mb-4 flex gap-3">
+                       <div className="flex-1">
+                         {assignedCon ? (
+                           <div className="flex h-[52px] items-center justify-between rounded-[18px] border border-white bg-white px-4 shadow-sm">
+                             <div className="flex items-center gap-3">
+                               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-900">
+                                 <HardHat className="h-4 w-4 text-amber-400" />
+                               </div>
+                               <span className="text-sm font-extrabold text-slate-900">{assignedCon.username}</span>
+                             </div>
+                             <button className="text-[11px] font-extrabold uppercase tracking-wider text-red-500 hover:text-red-700">Revoke</button>
+                           </div>
+                         ) : (
+                           <div className="relative">
+                             <select
+                               className="appearance-none h-[52px] w-full rounded-[18px] border-2 border-dashed border-white bg-white py-3 pl-10 pr-10 text-[12px] font-extrabold tracking-wide text-slate-600 shadow-sm transition-all hover:border-slate-200 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+                               onChange={(e) => handleAssignContractor(s.id, Number(e.target.value))}
+                               defaultValue=""
+                             >
+                               <option value="" disabled>DEPLOY CONTRACTOR...</option>
+                               {contractors.map(c => (
+                                 <option key={c.id} value={c.id}>{c.username}</option>
+                               ))}
+                             </select>
+                             <UserPlus className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                             <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                           </div>
+                         )}
+                       </div>
+
+                       <button className="h-[52px] min-w-[170px] rounded-[18px] border border-white bg-[linear-gradient(180deg,#eef5ff_0%,#dfeeff_100%)] px-4 text-[12px] font-extrabold text-blue-700 shadow-sm transition-all hover:border-white hover:bg-[linear-gradient(180deg,#e7f0ff_0%,#d6e8ff_100%)]">
+                         + Create Contractor
+                       </button>
+                     </div>
+
+                     <div>
+                       <div className="mb-3">
+                         <span className="inline-flex rounded-sm border border-white bg-white px-2 py-0.5 text-[11px] font-extrabold uppercase tracking-[0.18em] text-slate-600 shadow-sm">
+                           Plans
+                         </span>
+                       </div>
+
+                       <div className="min-h-[94px] rounded-[18px] border border-white bg-white px-2 py-2">
+                         {(drawingsByStructure[s.id] || []).length > 0 ? (
+                           <div className="space-y-2">
+                             {(drawingsByStructure[s.id] || []).map((drawing) => (
+                               <div
+                                 key={drawing.id}
+                                 onClick={() => navigate(`/plans?structureId=${s.id}&drawingId=${drawing.id}`)}
+                                 className="group/plan flex items-center gap-3 rounded-xl border border-transparent px-2 py-2 transition-all hover:border-slate-200 hover:bg-slate-50"
+                               >
+                                 <div className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left">
+                                   <FileText className="h-4 w-4 flex-shrink-0 text-indigo-500" />
+                                   <span className="truncate text-sm font-bold text-slate-800 group-hover/plan:text-blue-700">
+                                     {drawing.name}
+                                   </span>
+                                 </div>
+
+                                 <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover/plan:opacity-100">
+                                   <button
+                                     onClick={(e) => {
+                                       e.stopPropagation();
+                                       void handleEditDrawing(s.id, drawing.id, drawing.name);
+                                     }}
+                                     className="rounded-md border border-slate-200 bg-white p-1.5 text-slate-500 transition-colors hover:border-slate-300 hover:text-slate-800"
+                                   >
+                                     <PenSquare className="h-3.5 w-3.5" />
+                                   </button>
+                                   <button
+                                     onClick={(e) => {
+                                       e.stopPropagation();
+                                       void handleDeleteDrawing(s.id, drawing.id, drawing.name);
+                                     }}
+                                     disabled={deletingDrawingId === drawing.id}
+                                     className="rounded-md border border-red-200 bg-red-50 p-1.5 text-red-500 transition-colors hover:border-red-300 hover:bg-red-100 hover:text-red-600 disabled:opacity-60"
+                                   >
+                                     {deletingDrawingId === drawing.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                                   </button>
+                                 </div>
+                               </div>
+                             ))}
+                           </div>
+                         ) : (
+                           <div className="flex h-[78px] items-center justify-center">
+                             <span className="rounded-sm bg-slate-100 px-2 py-1 text-xs font-bold text-slate-500">No plan files uploaded yet.</span>
+                           </div>
+                         )}
+                       </div>
+                     </div>
+                   </div>
+
+                   <div className="mt-4 flex gap-3">
+                     <button onClick={() => handleStructureUploadClick(s.id)} disabled={uploadingStructureId === s.id} className="flex h-[48px] flex-1 items-center justify-center gap-2 rounded-[14px] border border-blue-200 bg-[linear-gradient(180deg,#eef5ff_0%,#dfeeff_100%)] px-4 text-[13px] font-extrabold text-blue-700 transition-all hover:border-blue-300 hover:bg-[linear-gradient(180deg,#e7f0ff_0%,#d6e8ff_100%)] active:scale-[0.99] disabled:opacity-60">
+                       {uploadingStructureId === s.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Upload Plan
+                     </button>
+                     <button onClick={() => handleCreateBlankDrawing(s.id)} className="flex h-[48px] flex-1 items-center justify-center gap-2 rounded-[14px] border border-slate-200 bg-[linear-gradient(180deg,#f5f7fb_0%,#ebeff5_100%)] px-4 text-[13px] font-extrabold text-slate-700 transition-all hover:border-slate-300 hover:bg-[linear-gradient(180deg,#eef2f8_0%,#e4e9f1_100%)] active:scale-[0.99]">
+                       <FileText className="h-4 w-4" /> Blank Drawing
+                     </button>
+                   </div>
+                 </div>
+               );
+             })}
+           </div>
+         ) : (
+           <div className="rounded-3xl border border-slate-200 bg-white p-10 text-center shadow-sm">
+             <Building2 className="mx-auto mb-3 h-12 w-12 text-slate-300" />
+             <p className="font-bold text-slate-500">
+               {activePackage ? 'No structures in this package yet.' : 'Select a package to view structural targets.'}
+             </p>
+           </div>
+         )}
+      </div>
+      )}
     </div>
   );
 }

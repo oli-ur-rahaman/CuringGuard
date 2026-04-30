@@ -1,0 +1,56 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - generic [ref=e6]:
+      - img "CuringGuard Logo" [ref=e7]
+      - generic [ref=e8]: CuringGuard
+    - navigation [ref=e9]:
+      - link "Dashboard" [ref=e10] [cursor=pointer]:
+        - /url: /
+        - img [ref=e11]
+        - generic [ref=e16]: Dashboard
+      - link "Project Hierarchy" [ref=e17] [cursor=pointer]:
+        - /url: /setup
+        - img [ref=e18]
+        - generic [ref=e23]: Project Hierarchy
+      - link "PDF Plans & Canvas" [ref=e24] [cursor=pointer]:
+        - /url: /plans
+        - img [ref=e25]
+        - generic [ref=e27]: PDF Plans & Canvas
+      - link "Contractor Mgmt" [ref=e28] [cursor=pointer]:
+        - /url: /contractors
+        - img [ref=e29]
+        - generic [ref=e34]: Contractor Mgmt
+      - link "Settings" [ref=e35] [cursor=pointer]:
+        - /url: /settings
+        - img [ref=e36]
+        - generic [ref=e39]: Settings
+    - button "Sign Out" [ref=e41]:
+      - img [ref=e42]
+      - generic [ref=e45]: Sign Out
+  - generic [ref=e46]:
+    - banner [ref=e47]:
+      - button [ref=e48]:
+        - img [ref=e49]
+      - generic [ref=e50]:
+        - button [ref=e51]:
+          - img [ref=e52]
+        - generic [ref=e56] [cursor=pointer]: AD
+    - main [ref=e57]:
+      - generic [ref=e58]:
+        - generic [ref=e59]:
+          - heading "System Settings" [level=1] [ref=e60]:
+            - img [ref=e61]
+            - text: System Settings
+          - paragraph [ref=e64]: Manage your personal account profile and security credentials.
+        - generic [ref=e65]:
+          - heading "Security & Password" [level=2] [ref=e66]:
+            - img [ref=e67]
+            - text: Security & Password
+          - generic [ref=e70]:
+            - generic [ref=e71]:
+              - generic [ref=e72]: New Password
+              - textbox "Enter new password..." [ref=e73]
+            - generic [ref=e74]:
+              - generic [ref=e75]: Confirm Password
+              - textbox "Confirm new password..." [ref=e76]
+            - button "UPDATE PASSWORD" [disabled] [ref=e77]

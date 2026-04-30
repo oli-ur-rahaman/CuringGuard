@@ -8,6 +8,9 @@ class ProjectBase(BaseModel):
 class ProjectCreate(ProjectBase):
     pass
 
+class ProjectUpdate(BaseModel):
+    name: str
+
 class ProjectResponse(ProjectBase):
     id: int
 
@@ -20,6 +23,9 @@ class PackageBase(BaseModel):
 
 class PackageCreate(PackageBase):
     pass
+
+class PackageUpdate(BaseModel):
+    name: str
 
 class PackageResponse(PackageBase):
     id: int
@@ -35,6 +41,9 @@ class StructureBase(BaseModel):
 class StructureCreate(StructureBase):
     pass
 
+class StructureUpdate(BaseModel):
+    name: str
+
 class StructureResponse(StructureBase):
     id: int
 
@@ -48,6 +57,9 @@ class DrawingBase(BaseModel):
 
 class DrawingCreate(DrawingBase):
     pass
+
+class DrawingUpdate(BaseModel):
+    name: str
 
 class DrawingResponse(DrawingBase):
     id: int
