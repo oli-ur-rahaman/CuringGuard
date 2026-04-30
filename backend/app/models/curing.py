@@ -46,6 +46,7 @@ class DrawingElement(Base):
     element_type = Column(String(255), nullable=False)
     member_name = Column(String(255), nullable=True)
     color = Column(String(32), nullable=False)
+    point_shape = Column(String(32), nullable=True)
     is_hidden = Column(Boolean, nullable=False, default=False)
     curing_duration_days = Column(Integer, nullable=True)
     curing_start_date = Column(Date, nullable=True)

@@ -240,6 +240,7 @@ def _serialize_drawing_element(element: DrawingElement) -> dict:
         "elementType": element.element_type,
         "memberName": element.member_name or "",
         "color": element.color,
+        "pointShape": element.point_shape or "circle",
         "isHidden": bool(element.is_hidden),
         "points": json.loads(element.coordinates_json),
         "curingDurationDays": element.curing_duration_days,
@@ -751,6 +752,7 @@ def save_drawing_annotations(
             annotation_type=(annotation.get("type") or "rect"),
             member_name=annotation.get("memberName") or "",
             color=(annotation.get("color") or "#3b82f6"),
+            point_shape=(annotation.get("pointShape") or "circle") if (annotation.get("type") or "rect") == "point" else None,
             is_hidden=bool(annotation.get("isHidden", False)),
             coordinates_json=json.dumps(points),
         )

@@ -206,6 +206,10 @@ def ensure_runtime_schema():
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE drawing_elements ADD COLUMN is_hidden BOOLEAN NOT NULL DEFAULT FALSE"))
 
+    if "point_shape" not in drawing_element_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE drawing_elements ADD COLUMN point_shape VARCHAR(32) NULL"))
+
     if "curing_start_date" not in drawing_element_columns:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE drawing_elements ADD COLUMN curing_start_date DATE NULL"))

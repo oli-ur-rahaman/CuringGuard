@@ -62,6 +62,7 @@ type Annotation = {
   elementType: string;
   memberName: string;
   color: string;
+  pointShape?: 'circle' | 'square';
   isHidden?: boolean;
   points: Point[];
   curingDurationDays?: number | null;
@@ -80,6 +81,7 @@ type ToolConfig = {
   elementType: string;
   memberName: string;
   color: string;
+  pointShape: 'circle' | 'square';
 };
 type ElementEditDraft = {
   memberName: string;
@@ -104,6 +106,7 @@ const TOOL_CONFIG_DEFAULT: ToolConfig = {
   elementType: 'Wall',
   memberName: '',
   color: '#3b82f6',
+  pointShape: 'circle',
 };
 
 const DRAWING_TOOLS: ToolId[] = ['rect', 'polygon', 'line', 'point'];
@@ -187,6 +190,30 @@ const formatDisplayDate = (value?: string) => {
     month: 'short',
     year: 'numeric',
   }).toUpperCase();
+};
+
+const calibrationPixelLength = (calibration: CalibrationRecord) => {
+  const [start, end] = calibration.points;
+  return Math.hypot(end.x - start.x, end.y - start.y);
+};
+
+const resolveCalibrationForPage = (pages: PageRecord[], activePageId: string) => {
+  const activePage = pages.find((page) => page.id === activePageId);
+  const direct = activePage?.calibrations?.[0];
+  if (direct) return direct;
+  for (const page of pages) {
+    if (page.id === activePageId) continue;
+    if (page.calibrations && page.calibrations.length > 0) return page.calibrations[0];
+  }
+  return null;
+};
+
+const calibratedPixels = (calibration: CalibrationRecord | null, desired: { ft: number; in: number; m: number; mm: number }) => {
+  if (!calibration || !calibration.value) return null;
+  const pxPerUnit = calibrationPixelLength(calibration) / calibration.value;
+  const desiredValue = desired[calibration.unit];
+  if (!Number.isFinite(pxPerUnit) || !Number.isFinite(desiredValue)) return null;
+  return pxPerUnit * desiredValue;
 };
 
 const annotationBounds = (annotation: Annotation) => {
@@ -374,6 +401,9 @@ export default function Plans() {
   });
   const selectedCount = selectedIds.length;
   const allSelected = currentAnnotations.length > 0 && selectedCount === currentAnnotations.length;
+  const appliedCalibration = resolveCalibrationForPage(pages, activePageId);
+  const calibratedLineStroke = calibratedPixels(appliedCalibration, { ft: 1.5, in: 18, m: 0.45, mm: 460 });
+  const calibratedPointSize = calibratedPixels(appliedCalibration, { ft: 2, in: 24, m: 0.62, mm: 620 });
 
   const tools = [
     { id: 'select' as const, icon: MousePointer2, label: 'Selection' },
@@ -1042,6 +1072,7 @@ export default function Plans() {
         elementType: activeToolConfig.elementType,
         memberName: activeToolConfig.memberName,
         color: activeToolConfig.color,
+        pointShape: activeToolConfig.pointShape,
         points: [pagePoint],
       };
       finalizeDrawingAnnotation(annotation);
@@ -1491,13 +1522,14 @@ export default function Plans() {
     }
 
     if (annotation.type === 'line') {
+      const lineStrokeWidth = calibratedLineStroke ?? strokeWidth;
       return (
         <g key={annotation.id}>
           <polyline
             points={annotation.points.map((point) => `${point.x},${point.y}`).join(' ')}
             fill="none"
             stroke={stroke}
-            strokeWidth={strokeWidth}
+            strokeWidth={lineStrokeWidth}
             strokeLinejoin="round"
             strokeLinecap="round"
           />
@@ -1506,9 +1538,30 @@ export default function Plans() {
       );
     }
 
+    const pointSize = calibratedPointSize ?? 10;
+    const halfPointSize = pointSize / 2;
     return (
       <g key={annotation.id}>
-        <circle cx={annotation.points[0].x} cy={annotation.points[0].y} r={selected ? 7 : 5} fill={stroke} stroke="#ffffff" strokeWidth={2} />
+        {annotation.pointShape === 'square' ? (
+          <rect
+            x={annotation.points[0].x - halfPointSize}
+            y={annotation.points[0].y - halfPointSize}
+            width={pointSize}
+            height={pointSize}
+            fill={stroke}
+            stroke="#ffffff"
+            strokeWidth={2}
+          />
+        ) : (
+          <circle
+            cx={annotation.points[0].x}
+            cy={annotation.points[0].y}
+            r={pointSize / 2}
+            fill={stroke}
+            stroke="#ffffff"
+            strokeWidth={2}
+          />
+        )}
         {annotation.memberName && <text x={annotation.points[0].x + 10} y={annotation.points[0].y - 10} fill={stroke} fontSize="15" fontWeight="700">{annotation.memberName}</text>}
       </g>
     );
@@ -2168,6 +2221,30 @@ export default function Plans() {
                   ))}
                 </div>
               </div>
+
+              {activeTool === 'point' && (
+                <div>
+                  <label className="mb-2 block text-xs font-black uppercase tracking-widest text-slate-500">Point Shape</label>
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setToolConfigDraft((current) => ({ ...current, pointShape: 'circle' }))}
+                      className={`flex items-center gap-2 rounded-2xl border px-4 py-3 text-sm font-bold ${toolConfigDraft.pointShape === 'circle' ? 'border-slate-900 bg-slate-50 text-slate-900' : 'border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-800'}`}
+                    >
+                      <span className="h-4 w-4 rounded-full border-2 border-slate-700" />
+                      Circle
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setToolConfigDraft((current) => ({ ...current, pointShape: 'square' }))}
+                      className={`flex items-center gap-2 rounded-2xl border px-4 py-3 text-sm font-bold ${toolConfigDraft.pointShape === 'square' ? 'border-slate-900 bg-slate-50 text-slate-900' : 'border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-800'}`}
+                    >
+                      <span className="h-4 w-4 border-2 border-slate-700" />
+                      Square
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="mt-6 flex justify-end gap-3">
