@@ -176,7 +176,7 @@ export const hierarchyService = {
     const response = await api.delete(`/hierarchy/drawings/${drawingId}/pages/${encodeURIComponent(pageId)}`);
     return response.data;
   },
-  updatePageCalibration: async (drawingId: number, pageId: string, data: {
+  createPageCalibration: async (drawingId: number, pageId: string, data: {
     value: number;
     unit: string;
     x1: number;
@@ -191,7 +191,7 @@ export const hierarchyService = {
     formData.append('y1', String(data.y1));
     formData.append('x2', String(data.x2));
     formData.append('y2', String(data.y2));
-    const response = await api.patch(`/hierarchy/drawings/${drawingId}/pages/${encodeURIComponent(pageId)}/calibration`, formData, {
+    const response = await api.post(`/hierarchy/drawings/${drawingId}/pages/${encodeURIComponent(pageId)}/calibrations`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }

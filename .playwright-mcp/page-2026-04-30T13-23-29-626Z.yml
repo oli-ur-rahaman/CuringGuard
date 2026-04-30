@@ -1,0 +1,130 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - generic [ref=e6]:
+      - img "CuringGuard Logo" [ref=e7]
+      - generic [ref=e8]: CuringGuard
+    - navigation [ref=e9]:
+      - link "Dashboard" [ref=e10] [cursor=pointer]:
+        - /url: /
+        - img [ref=e11]
+        - generic [ref=e16]: Dashboard
+      - link "Project Hierarchy" [ref=e17] [cursor=pointer]:
+        - /url: /setup
+        - img [ref=e18]
+        - generic [ref=e23]: Project Hierarchy
+      - link "PDF Plans & Canvas" [ref=e24] [cursor=pointer]:
+        - /url: /plans
+        - img [ref=e25]
+        - generic [ref=e27]: PDF Plans & Canvas
+      - link "Contractor Mgmt" [ref=e28] [cursor=pointer]:
+        - /url: /contractors
+        - img [ref=e29]
+        - generic [ref=e34]: Contractor Mgmt
+      - link "Settings" [ref=e35] [cursor=pointer]:
+        - /url: /settings
+        - img [ref=e36]
+        - generic [ref=e39]: Settings
+    - button "Sign Out" [ref=e41]:
+      - img [ref=e42]
+      - generic [ref=e45]: Sign Out
+  - generic [ref=e46]:
+    - banner [ref=e47]:
+      - button [ref=e48]:
+        - img [ref=e49]
+      - generic [ref=e50]:
+        - button [ref=e51]:
+          - img [ref=e52]
+        - generic [ref=e56] [cursor=pointer]: AD
+    - main [ref=e57]:
+      - generic [ref=e58]:
+        - img [ref=e63]
+        - generic [ref=e64]:
+          - button "Selection" [ref=e65]:
+            - img [ref=e66]
+          - button "Hand Pan" [ref=e68]:
+            - img [ref=e69]
+          - button "Calibration" [ref=e74]:
+            - img [ref=e75]
+          - button "Rectangle" [ref=e81]:
+            - img [ref=e82]
+          - button "Polygon" [ref=e84]:
+            - img [ref=e85]
+          - button "Line" [ref=e87]:
+            - img [ref=e88]
+          - button "Point" [ref=e90]:
+            - img [ref=e91]
+        - generic [ref=e94]:
+          - button "Toggle plan explorer" [ref=e95]:
+            - img [ref=e96]
+          - button [ref=e98]:
+            - img [ref=e99]
+          - button [ref=e102]:
+            - img [ref=e103]
+          - button [ref=e106]:
+            - img [ref=e107]
+          - button [ref=e114]:
+            - img [ref=e115]
+          - button "Toggle elements drawer" [ref=e118]:
+            - img [ref=e119]
+          - button "Enter fullscreen" [ref=e122]:
+            - img [ref=e123]
+          - button "Close current drawing" [ref=e128]:
+            - img [ref=e129]
+          - button "Delete selected elements" [disabled] [ref=e132]:
+            - img [ref=e133]
+          - button "Edit selected elements" [disabled] [ref=e136]:
+            - img [ref=e137]
+          - button "Grouping will be added next" [ref=e140]:
+            - img [ref=e141]
+        - generic [ref=e145]:
+          - generic [ref=e146]:
+            - generic [ref=e147]:
+              - heading "Plan Manager" [level=2] [ref=e148]
+              - button [ref=e149]:
+                - img [ref=e150]
+            - button "ADD PLAN FILE" [disabled] [ref=e153]:
+              - img [ref=e154]
+              - text: ADD PLAN FILE
+          - generic [ref=e156]: No structure plans linked.
+        - generic [ref=e157]:
+          - generic [ref=e158]:
+            - generic [ref=e159]:
+              - generic [ref=e160]:
+                - heading "Page Elements" [level=2] [ref=e161]
+                - paragraph [ref=e162]: 0 loaded
+              - button [ref=e163]:
+                - img [ref=e164]
+            - generic [ref=e167]:
+              - button "Select All" [ref=e168]:
+                - img [ref=e169]
+                - text: Select All
+              - button "Show All" [ref=e171]:
+                - img [ref=e172]
+                - text: Show All
+          - generic [ref=e175]:
+            - button "Name ↑" [ref=e176]:
+              - generic [ref=e177]: Name
+              - generic [ref=e178]: ↑
+            - button "Type" [ref=e179]:
+              - generic [ref=e180]: Type
+            - button "Days" [ref=e181]:
+              - generic [ref=e182]: Days
+            - button "Start" [ref=e183]:
+              - generic [ref=e184]: Start
+            - button "End" [ref=e185]:
+              - generic [ref=e186]: End
+            - generic [ref=e187]: Show
+          - generic [ref=e189]: No elements on this page yet.
+        - generic [ref=e191]:
+          - generic [ref=e192]:
+            - paragraph [ref=e193]: No plan selected
+            - paragraph [ref=e194]: No page selected
+            - paragraph
+          - button "Refresh page elements" [disabled] [ref=e195]:
+            - img [ref=e196]
+        - button [ref=e205]:
+          - img [ref=e207]
+        - generic:
+          - generic:
+            - img
+            - text: Loading plan

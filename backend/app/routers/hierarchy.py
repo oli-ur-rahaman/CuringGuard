@@ -91,7 +91,7 @@ def _resolve_drawing_pdf_path(drawing: Drawing) -> str:
     return drawing.file_path
 
 
-def _page_payload(page: DrawingPage) -> dict:
+def _page_payload(page: DrawingPage, db: Session | None = None) -> dict:
     payload = {
         "id": page.page_ref,
         "name": page.name,
@@ -99,15 +99,15 @@ def _page_payload(page: DrawingPage) -> dict:
     }
     if page.source_page_number is not None:
         payload["page_number"] = page.source_page_number
-    if None not in (page.calibration_x1, page.calibration_y1, page.calibration_x2, page.calibration_y2, page.calibration_value) and page.calibration_unit:
-        payload["calibration"] = {
-            "points": [
-                {"x": page.calibration_x1, "y": page.calibration_y1},
-                {"x": page.calibration_x2, "y": page.calibration_y2},
-            ],
-            "value": page.calibration_value,
-            "unit": page.calibration_unit,
-        }
+    calibrations: list[dict] = []
+    if page.calibrations_json:
+        try:
+            parsed = json.loads(page.calibrations_json)
+            if isinstance(parsed, list):
+                calibrations = parsed
+        except json.JSONDecodeError:
+            calibrations = []
+    payload["calibrations"] = calibrations
     return payload
 
 
@@ -481,7 +481,7 @@ def get_drawing_pages(drawing_id: int, db: Session = Depends(get_db), current_us
         raise HTTPException(status_code=400, detail="Drawing file not found on server.")
 
     _ensure_drawing_pages(db, drawing)
-    pages = [_page_payload(page) for page in _active_drawing_pages(db, drawing.id)]
+    pages = [_page_payload(page, db) for page in _active_drawing_pages(db, drawing.id)]
     return {
         "drawing_id": drawing.id,
         "drawing_name": drawing.name,
@@ -528,12 +528,12 @@ def create_blank_drawing_page(
         "drawing_id": drawing.id,
         "drawing_name": drawing.name,
         "structure_id": drawing.structure_id,
-        "page": _page_payload(page),
+        "page": _page_payload(page, db),
     }
 
 
-@router.patch("/drawings/{drawing_id}/pages/{page_ref:path}/calibration")
-def update_page_calibration(
+@router.post("/drawings/{drawing_id}/pages/{page_ref:path}/calibrations")
+def create_page_calibration(
     drawing_id: int,
     page_ref: str,
     value: float = Form(...),
@@ -556,12 +556,26 @@ def update_page_calibration(
     if value <= 0:
         raise HTTPException(status_code=400, detail="Calibration value must be greater than zero.")
 
-    page.calibration_x1 = x1
-    page.calibration_y1 = y1
-    page.calibration_x2 = x2
-    page.calibration_y2 = y2
-    page.calibration_value = value
-    page.calibration_unit = normalized_unit
+    calibrations: list[dict] = []
+    if page.calibrations_json:
+        try:
+            parsed = json.loads(page.calibrations_json)
+            if isinstance(parsed, list):
+                calibrations = parsed
+        except json.JSONDecodeError:
+            calibrations = []
+
+    calibration = {
+        "id": (max((int(item.get("id", 0)) for item in calibrations), default=0) + 1),
+        "points": [
+            {"x": x1, "y": y1},
+            {"x": x2, "y": y2},
+        ],
+        "value": value,
+        "unit": normalized_unit,
+    }
+    calibrations.append(calibration)
+    page.calibrations_json = json.dumps(calibrations)
     db.commit()
     db.refresh(page)
 
@@ -569,7 +583,8 @@ def update_page_calibration(
         "status": "success",
         "drawing_id": drawing_id,
         "page_id": page_ref,
-        "page": _page_payload(page),
+        "calibration": calibration,
+        "page": _page_payload(page, db),
     }
 
 
@@ -653,7 +668,7 @@ def create_blank_drawing(
         "drawing_name": db_drawing.name,
         "structure_id": db_drawing.structure_id,
         "asset_kind": db_drawing.asset_kind,
-        "page": _page_payload(first_page),
+        "page": _page_payload(first_page, db),
     }
 
 

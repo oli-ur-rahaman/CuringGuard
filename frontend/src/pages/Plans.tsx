@@ -48,11 +48,12 @@ type ExplorerGroup = {
   drawings: DrawingRecord[];
 };
 type CalibrationRecord = {
+  id: number;
   points: Point[];
   value: number;
   unit: 'ft' | 'in' | 'm' | 'mm';
 };
-type PageRecord = { id: string; name: string; kind: string; page_number?: number; calibration?: CalibrationRecord };
+type PageRecord = { id: string; name: string; kind: string; page_number?: number; calibrations?: CalibrationRecord[] };
 type AnnotationType = 'rect' | 'polygon' | 'line' | 'point';
 type ToolId = 'select' | 'pan' | 'calibrate' | 'rect' | 'polygon' | 'line' | 'point';
 type Annotation = {
@@ -1356,7 +1357,7 @@ export default function Plans() {
 
     try {
       const [start, end] = pendingCalibrationLine;
-      const response = await hierarchyService.updatePageCalibration(activeDrawingId, activePageId, {
+      const response = await hierarchyService.createPageCalibration(activeDrawingId, activePageId, {
         value: parsedValue,
         unit: calibrationDraft.unit,
         x1: start.x,
@@ -1373,7 +1374,6 @@ export default function Plans() {
       setPendingCalibrationLine(null);
       setCalibrationDraft({ value: '', unit: 'ft' });
       setDrawingSession(null);
-      setActiveTool('select');
     } catch (error: any) {
       alert(error.response?.data?.detail || 'Failed to save calibration.');
     }
@@ -1515,11 +1515,12 @@ export default function Plans() {
   };
 
   const renderDraft = () => {
-    if (!drawingSession || !activeToolConfig) return null;
-    const stroke = darken(activeToolConfig.color);
-    const fill = rgba(activeToolConfig.color, 0.18);
+    if (!drawingSession) return null;
 
     if (drawingSession.tool === 'rect') {
+      if (!activeToolConfig) return null;
+      const stroke = darken(activeToolConfig.color);
+      const fill = rgba(activeToolConfig.color, 0.18);
       const x = Math.min(drawingSession.start.x, drawingSession.current.x);
       const y = Math.min(drawingSession.start.y, drawingSession.current.y);
       const width = Math.abs(drawingSession.current.x - drawingSession.start.x);
@@ -1541,6 +1542,9 @@ export default function Plans() {
       );
     }
 
+    if (!activeToolConfig) return null;
+    const stroke = darken(activeToolConfig.color);
+    const fill = rgba(activeToolConfig.color, 0.18);
     const previewPoints = [...drawingSession.points, mousePage];
     return drawingSession.tool === 'polygon'
       ? <polygon points={previewPoints.map((point) => `${point.x},${point.y}`).join(' ')} fill={fill} stroke={stroke} strokeWidth={2} strokeDasharray="8 6" />
@@ -1602,13 +1606,12 @@ export default function Plans() {
             style={{ width: `${canvasSize.width}px`, height: `${canvasSize.height}px`, opacity: showDrawing ? 1 : 0 }}
           />
           <svg width={canvasSize.width} height={canvasSize.height} viewBox={`0 0 ${canvasSize.width} ${canvasSize.height}`} className="absolute overflow-visible">
-            {pages.find((page) => page.id === activePageId)?.calibration && (() => {
-              const calibration = pages.find((page) => page.id === activePageId)?.calibration!;
+            {(pages.find((page) => page.id === activePageId)?.calibrations || []).map((calibration) => {
               const [start, end] = calibration.points;
               const centerX = (start.x + end.x) / 2;
               const centerY = (start.y + end.y) / 2;
               return (
-                <g>
+                <g key={calibration.id}>
                   <line
                     x1={start.x}
                     y1={start.y}
@@ -1623,7 +1626,7 @@ export default function Plans() {
                   </text>
                 </g>
               );
-            })()}
+            })}
             {currentAnnotations.map(renderAnnotation)}
             {renderDraft()}
             {selectionBox && (
