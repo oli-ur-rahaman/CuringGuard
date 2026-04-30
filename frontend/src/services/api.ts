@@ -146,6 +146,7 @@ export const hierarchyService = {
     color?: string;
     elementType?: string;
     curingStartDate?: string;
+    isHidden?: boolean;
   }) => {
     const formData = new FormData();
     formData.append('page_id', pageId);
@@ -153,6 +154,7 @@ export const hierarchyService = {
     if (data.color !== undefined) formData.append('color', data.color);
     if (data.elementType !== undefined) formData.append('element_type', data.elementType);
     if (data.curingStartDate !== undefined) formData.append('curing_start_date', data.curingStartDate);
+    if (data.isHidden !== undefined) formData.append('is_hidden', String(data.isHidden));
     const response = await api.patch(`/hierarchy/drawings/${drawingId}/annotations/${elementId}`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
@@ -172,6 +174,28 @@ export const hierarchyService = {
   },
   deleteDrawingPage: async (drawingId: number, pageId: string) => {
     const response = await api.delete(`/hierarchy/drawings/${drawingId}/pages/${encodeURIComponent(pageId)}`);
+    return response.data;
+  },
+  updatePageCalibration: async (drawingId: number, pageId: string, data: {
+    value: number;
+    unit: string;
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+  }) => {
+    const formData = new FormData();
+    formData.append('value', String(data.value));
+    formData.append('unit', data.unit);
+    formData.append('x1', String(data.x1));
+    formData.append('y1', String(data.y1));
+    formData.append('x2', String(data.x2));
+    formData.append('y2', String(data.y2));
+    const response = await api.patch(`/hierarchy/drawings/${drawingId}/pages/${encodeURIComponent(pageId)}/calibration`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
     return response.data;
   },
   getDrawingCanvasData: async (drawingId: number, pageId?: string) => {

@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, Integer, String, ForeignKey
+from sqlalchemy import Boolean, Column, Integer, String, ForeignKey, Float
 from backend.app.core.database import Base
 
 
@@ -48,4 +48,10 @@ class DrawingPage(Base):
     kind = Column(String(50), nullable=False)
     source_page_number = Column(Integer, nullable=True)
     sort_order = Column(Integer, nullable=False, default=0)
+    calibration_x1 = Column(Float, nullable=True)
+    calibration_y1 = Column(Float, nullable=True)
+    calibration_x2 = Column(Float, nullable=True)
+    calibration_y2 = Column(Float, nullable=True)
+    calibration_value = Column(Float, nullable=True)
+    calibration_unit = Column(String(16), nullable=True)
     is_deleted = Column(Boolean, nullable=False, default=False)

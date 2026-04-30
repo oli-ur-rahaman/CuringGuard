@@ -1,7 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
+  CheckSquare2,
   ChevronDown,
+  DraftingCompass,
   Eye,
   EyeOff,
   FileText,
@@ -14,6 +16,7 @@ import {
   MapPin,
   Minimize2,
   MousePointer2,
+  Square as SquareIcon,
   PenSquare,
   Plus,
   RefreshCw,
@@ -44,15 +47,21 @@ type ExplorerGroup = {
   packageName: string;
   drawings: DrawingRecord[];
 };
-type PageRecord = { id: string; name: string; kind: string; page_number?: number };
+type CalibrationRecord = {
+  points: Point[];
+  value: number;
+  unit: 'ft' | 'in' | 'm' | 'mm';
+};
+type PageRecord = { id: string; name: string; kind: string; page_number?: number; calibration?: CalibrationRecord };
 type AnnotationType = 'rect' | 'polygon' | 'line' | 'point';
-type ToolId = 'select' | 'pan' | 'rect' | 'polygon' | 'line' | 'point';
+type ToolId = 'select' | 'pan' | 'calibrate' | 'rect' | 'polygon' | 'line' | 'point';
 type Annotation = {
   id: string;
   type: AnnotationType;
   elementType: string;
   memberName: string;
   color: string;
+  isHidden?: boolean;
   points: Point[];
   curingDurationDays?: number | null;
   curingStartDate?: string;
@@ -65,6 +74,7 @@ type CuringRuleRecord = {
   required_curing_days: number;
   is_active: boolean;
 };
+type ElementSortKey = 'memberName' | 'elementType' | 'curingDurationDays' | 'curingStartDate' | 'curingEndDate';
 type ToolConfig = {
   elementType: string;
   memberName: string;
@@ -77,7 +87,8 @@ type ElementEditDraft = {
 type SelectionBox = { start: Point; end: Point };
 type DrawingSession =
   | { tool: 'rect'; start: Point; current: Point }
-  | { tool: 'polygon' | 'line'; points: Point[] };
+  | { tool: 'polygon' | 'line'; points: Point[] }
+  | { tool: 'calibrate'; start: Point; current: Point };
 type PlanWorkspaceState = {
   structureId: number;
   drawingId: number;
@@ -85,6 +96,7 @@ type PlanWorkspaceState = {
   scale: number;
   position: { x: number; y: number };
   showDrawing: boolean;
+  elementsDrawerOpen: boolean;
 };
 
 const TOOL_CONFIG_DEFAULT: ToolConfig = {
@@ -94,6 +106,7 @@ const TOOL_CONFIG_DEFAULT: ToolConfig = {
 };
 
 const DRAWING_TOOLS: ToolId[] = ['rect', 'polygon', 'line', 'point'];
+const CALIBRATION_UNITS = ['ft', 'in', 'm', 'mm'] as const;
 const COLOR_SWATCHES = ['#3b82f6', '#16a34a', '#f59e0b', '#ef4444', '#8b5cf6', '#0f766e', '#ec4899', '#64748b'];
 const ELEMENT_TYPE_OPTIONS = ['Wall', 'Column', 'Beam', 'Slab', 'Zone', 'Opening', 'Other'];
 const PLAN_WORKSPACE_KEY = 'curingguard.plan.workspace';
@@ -116,6 +129,7 @@ const loadPlanWorkspace = (): PlanWorkspaceState | null => {
         y: Number(parsed.position?.y) || 0,
       },
       showDrawing: parsed.showDrawing !== false,
+      elementsDrawerOpen: parsed.elementsDrawerOpen !== false,
     };
   } catch {
     return null;
@@ -161,6 +175,17 @@ const rgba = (hex: string, alpha: number) => {
 const darken = (hex: string, factor = 0.62) => {
   const { r, g, b } = hexToRgb(hex);
   return `rgb(${Math.round(r * factor)}, ${Math.round(g * factor)}, ${Math.round(b * factor)})`;
+};
+
+const formatDisplayDate = (value?: string) => {
+  if (!value) return '-';
+  const parsed = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  }).toUpperCase();
 };
 
 const annotationBounds = (annotation: Annotation) => {
@@ -251,7 +276,7 @@ export default function Plans() {
   const currentUserId = currentUser?.user_id || 0;
   const [activeTool, setActiveTool] = useState<ToolId>('select');
   const [treeOpen, setTreeOpen] = useState(false);
-  const [elementsDrawerOpen, setElementsDrawerOpen] = useState(true);
+  const [elementsDrawerOpen, setElementsDrawerOpen] = useState(persistedWorkspace?.elementsDrawerOpen !== false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -289,6 +314,10 @@ export default function Plans() {
   const [annotationsByPage, setAnnotationsByPage] = useState<Record<string, Annotation[]>>({});
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [curingRules, setCuringRules] = useState<CuringRuleRecord[]>([]);
+  const [elementSort, setElementSort] = useState<{ key: ElementSortKey; direction: 'asc' | 'desc' }>({
+    key: 'memberName',
+    direction: 'asc',
+  });
   const [canvasSize, setCanvasSize] = useState({ width: 1000, height: 1000 });
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
@@ -303,6 +332,9 @@ export default function Plans() {
   const [toolConfigDraft, setToolConfigDraft] = useState<ToolConfig>(TOOL_CONFIG_DEFAULT);
   const [activeToolConfig, setActiveToolConfig] = useState<ToolConfig | null>(null);
   const [toolModalOpen, setToolModalOpen] = useState(false);
+  const [calibrationModalOpen, setCalibrationModalOpen] = useState(false);
+  const [pendingCalibrationLine, setPendingCalibrationLine] = useState<[Point, Point] | null>(null);
+  const [calibrationDraft, setCalibrationDraft] = useState<{ value: string; unit: (typeof CALIBRATION_UNITS)[number] }>({ value: '', unit: 'ft' });
   const [elementEditModalOpen, setElementEditModalOpen] = useState(false);
   const [elementEditDraft, setElementEditDraft] = useState<ElementEditDraft>({ memberName: '', color: TOOL_CONFIG_DEFAULT.color });
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
@@ -311,6 +343,7 @@ export default function Plans() {
   const renderCanvasRef = useRef<HTMLCanvasElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const thumbnailRailRef = useRef<HTMLDivElement>(null);
+  const dateInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const restoredViewportKeyRef = useRef('');
   const workspaceRestoreReadyRef = useRef(false);
   const viewportRestoreAppliedRef = useRef(false);
@@ -327,10 +360,24 @@ export default function Plans() {
     if (byGeometry && acc[byGeometry] === undefined) acc[byGeometry] = rule.required_curing_days;
     return acc;
   }, {});
+  const sortedAnnotations = [...currentAnnotations].sort((left, right) => {
+    const factor = elementSort.direction === 'asc' ? 1 : -1;
+    const leftValue = left[elementSort.key];
+    const rightValue = right[elementSort.key];
+
+    if (elementSort.key === 'curingDurationDays') {
+      return (((leftValue as number | null | undefined) ?? -1) - ((rightValue as number | null | undefined) ?? -1)) * factor;
+    }
+
+    return String(leftValue || '').localeCompare(String(rightValue || ''), undefined, { numeric: true, sensitivity: 'base' }) * factor;
+  });
+  const selectedCount = selectedIds.length;
+  const allSelected = currentAnnotations.length > 0 && selectedCount === currentAnnotations.length;
 
   const tools = [
     { id: 'select' as const, icon: MousePointer2, label: 'Selection' },
     { id: 'pan' as const, icon: Hand, label: 'Hand Pan' },
+    { id: 'calibrate' as const, icon: DraftingCompass, label: 'Calibration' },
     { id: 'rect' as const, icon: Square, label: 'Rectangle' },
     { id: 'polygon' as const, icon: Triangle, label: 'Polygon' },
     { id: 'line' as const, icon: Slash, label: 'Line' },
@@ -545,6 +592,8 @@ export default function Plans() {
     setActiveTool('select');
     setActiveToolConfig(null);
     setToolModalOpen(false);
+    setCalibrationModalOpen(false);
+    setPendingCalibrationLine(null);
     setElementEditModalOpen(false);
     setScale(1);
     setPosition({ x: 0, y: 0 });
@@ -558,6 +607,7 @@ export default function Plans() {
       scale: 1,
       position: { x: 0, y: 0 },
       showDrawing,
+      elementsDrawerOpen,
     });
     navigate(activeStructureId ? `/plans?structureId=${activeStructureId}` : '/plans', { replace: true });
   };
@@ -676,6 +726,8 @@ export default function Plans() {
     setActiveTool('select');
     setActiveToolConfig(null);
     setToolModalOpen(false);
+    setCalibrationModalOpen(false);
+    setPendingCalibrationLine(null);
     setElementEditModalOpen(false);
     void reloadCurrentPageAnnotations(activeDrawingId, activePage.id);
   }, [activePageId, activeDrawingId, pages]);
@@ -771,6 +823,7 @@ export default function Plans() {
       scale: fittedViewport.scale,
       position: fittedViewport.position,
       showDrawing: true,
+      elementsDrawerOpen,
     };
     restoredViewportKeyRef.current = restoreKey;
     viewportRestoreAppliedRef.current = false;
@@ -855,10 +908,11 @@ export default function Plans() {
       scale,
       position,
       showDrawing,
+      elementsDrawerOpen,
     };
     savePlanWorkspace(nextWorkspace);
     persistedWorkspaceRef.current = nextWorkspace;
-  }, [activeStructureId, activeDrawingId, activePageId, scale, position, showDrawing]);
+  }, [activeStructureId, activeDrawingId, activePageId, scale, position, showDrawing, elementsDrawerOpen]);
 
   useEffect(() => {
     if (!activeStructureId) return;
@@ -968,6 +1022,18 @@ export default function Plans() {
       return;
     }
 
+    if (activeTool === 'calibrate') {
+      if (!drawingSession || drawingSession.tool !== 'calibrate') {
+        setDrawingSession({ tool: 'calibrate', start: pagePoint, current: pagePoint });
+      } else {
+        setPendingCalibrationLine([drawingSession.start, pagePoint]);
+        setCalibrationDraft({ value: '', unit: 'ft' });
+        setCalibrationModalOpen(true);
+        setDrawingSession(null);
+      }
+      return;
+    }
+
     if (activeTool === 'point' && activeToolConfig) {
       const annotation: Annotation = {
         id: crypto.randomUUID(),
@@ -1043,6 +1109,11 @@ export default function Plans() {
     }
 
     if (drawingSession?.tool === 'rect') {
+      setDrawingSession({ ...drawingSession, current: pagePoint });
+      return;
+    }
+
+    if (drawingSession?.tool === 'calibrate') {
       setDrawingSession({ ...drawingSession, current: pagePoint });
     }
   };
@@ -1191,7 +1262,7 @@ export default function Plans() {
 
   const handleUpdateAnnotationMeta = async (
     elementId: string,
-    patch: Partial<Pick<Annotation, 'memberName' | 'color' | 'elementType' | 'curingStartDate'>>,
+    patch: Partial<Pick<Annotation, 'memberName' | 'color' | 'elementType' | 'curingStartDate' | 'isHidden'>>,
   ) => {
     if (!activeDrawingId || !activePageId) return;
 
@@ -1219,6 +1290,7 @@ export default function Plans() {
         color: patch.color,
         elementType: patch.elementType,
         curingStartDate: patch.curingStartDate,
+        isHidden: patch.isHidden,
       });
       const updated = response.annotation;
       setAnnotationsForPage(activePageId, optimistic.map((annotation) => (
@@ -1227,6 +1299,83 @@ export default function Plans() {
     } catch (error: any) {
       await reloadCurrentPageAnnotations(activeDrawingId, activePageId, { preserveSelection: true });
       alert(error.response?.data?.detail || 'Failed to update element.');
+    }
+  };
+
+  const handleSortElements = (key: ElementSortKey) => {
+    setElementSort((current) => (
+      current.key === key
+        ? { key, direction: current.direction === 'asc' ? 'desc' : 'asc' }
+        : { key, direction: 'asc' }
+    ));
+  };
+
+  const handleDrawerRowSelect = (annotationId: string, event: React.MouseEvent) => {
+    const toggle = event.ctrlKey || event.metaKey;
+    setActiveTool('select');
+    setSelectedIds((current) => {
+      if (!toggle) {
+        if (current.includes(annotationId)) {
+          if (current.length > 1) {
+            return [annotationId];
+          }
+          return [];
+        }
+        return [annotationId];
+      }
+      if (current.includes(annotationId)) {
+        return current.filter((id) => id !== annotationId);
+      }
+      return [...current, annotationId];
+    });
+  };
+
+  const handleToggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedIds([]);
+      return;
+    }
+    setSelectedIds(currentAnnotations.map((annotation) => annotation.id));
+  };
+
+  const handleShowAllElements = async () => {
+    if (!activeDrawingId || !activePageId) return;
+    await Promise.all(currentAnnotations.map((annotation) => (
+      handleUpdateAnnotationMeta(annotation.id, { isHidden: false })
+    )));
+    await reloadCurrentPageAnnotations(activeDrawingId, activePageId, { preserveSelection: true });
+  };
+
+  const handleSaveCalibration = async () => {
+    if (!activeDrawingId || !activePageId || !pendingCalibrationLine) return;
+    const parsedValue = Number(calibrationDraft.value);
+    if (!Number.isFinite(parsedValue) || parsedValue <= 0) {
+      alert('Enter a valid calibration value.');
+      return;
+    }
+
+    try {
+      const [start, end] = pendingCalibrationLine;
+      const response = await hierarchyService.updatePageCalibration(activeDrawingId, activePageId, {
+        value: parsedValue,
+        unit: calibrationDraft.unit,
+        x1: start.x,
+        y1: start.y,
+        x2: end.x,
+        y2: end.y,
+      });
+      const updatedPage = response.page as PageRecord;
+      setPages((current) => current.map((page) => page.id === updatedPage.id ? { ...page, ...updatedPage } : page));
+      if (activePageId === updatedPage.id) {
+        setActivePageName(updatedPage.name);
+      }
+      setCalibrationModalOpen(false);
+      setPendingCalibrationLine(null);
+      setCalibrationDraft({ value: '', unit: 'ft' });
+      setDrawingSession(null);
+      setActiveTool('select');
+    } catch (error: any) {
+      alert(error.response?.data?.detail || 'Failed to save calibration.');
     }
   };
 
@@ -1292,6 +1441,13 @@ export default function Plans() {
     if (activeTool === 'line') {
       return <div className={`${baseClass} h-[2px] w-5 rotate-[-22deg] bg-black`} style={style} />;
     }
+    if (activeTool === 'calibrate') {
+      return (
+        <div className={baseClass} style={style}>
+          <DraftingCompass className="h-4 w-4 text-[#f7c58a]" />
+        </div>
+      );
+    }
     if (activeTool === 'point') {
       return <div className={`${baseClass} h-2 w-2 rounded-full border border-black bg-black/80`} style={style} />;
     }
@@ -1299,6 +1455,7 @@ export default function Plans() {
   };
 
   const renderAnnotation = (annotation: Annotation) => {
+    if (annotation.isHidden) return null;
     const selected = selectedIds.includes(annotation.id);
     const stroke = darken(annotation.color);
     const fill = rgba(annotation.color, selected ? 0.32 : 0.18);
@@ -1370,6 +1527,20 @@ export default function Plans() {
       return <rect x={x} y={y} width={width} height={height} fill={fill} stroke={stroke} strokeWidth={2} strokeDasharray="8 6" />;
     }
 
+    if (drawingSession.tool === 'calibrate') {
+      return (
+        <line
+          x1={drawingSession.start.x}
+          y1={drawingSession.start.y}
+          x2={drawingSession.current.x}
+          y2={drawingSession.current.y}
+          stroke="#f7c58a"
+          strokeWidth={1}
+          strokeLinecap="round"
+        />
+      );
+    }
+
     const previewPoints = [...drawingSession.points, mousePage];
     return drawingSession.tool === 'polygon'
       ? <polygon points={previewPoints.map((point) => `${point.x},${point.y}`).join(' ')} fill={fill} stroke={stroke} strokeWidth={2} strokeDasharray="8 6" />
@@ -1431,6 +1602,28 @@ export default function Plans() {
             style={{ width: `${canvasSize.width}px`, height: `${canvasSize.height}px`, opacity: showDrawing ? 1 : 0 }}
           />
           <svg width={canvasSize.width} height={canvasSize.height} viewBox={`0 0 ${canvasSize.width} ${canvasSize.height}`} className="absolute overflow-visible">
+            {pages.find((page) => page.id === activePageId)?.calibration && (() => {
+              const calibration = pages.find((page) => page.id === activePageId)?.calibration!;
+              const [start, end] = calibration.points;
+              const centerX = (start.x + end.x) / 2;
+              const centerY = (start.y + end.y) / 2;
+              return (
+                <g>
+                  <line
+                    x1={start.x}
+                    y1={start.y}
+                    x2={end.x}
+                    y2={end.y}
+                    stroke="#f7c58a"
+                    strokeWidth={1}
+                    strokeLinecap="round"
+                  />
+                  <text x={centerX + 8} y={centerY - 8} fill="#c27a2c" fontSize="14" fontWeight="800">
+                    {`${calibration.value} ${calibration.unit}`}
+                  </text>
+                </g>
+              );
+            })()}
             {currentAnnotations.map(renderAnnotation)}
             {renderDraft()}
             {selectionBox && (
@@ -1456,64 +1649,6 @@ export default function Plans() {
             {renderCursorGlyph()}
           </>
         )}
-      </div>
-
-      <div className={`absolute left-6 top-[96px] z-30 flex h-[calc(100%-212px)] w-[380px] flex-col rounded-[28px] border border-slate-200 bg-[linear-gradient(180deg,#fbfdff_0%,#f3f7fc_100%)] shadow-[20px_0_40px_rgba(15,23,42,0.12)] transition-transform duration-300 ${elementsDrawerOpen ? (treeOpen ? 'translate-x-[392px]' : 'translate-x-0') : '-translate-x-[calc(100%+32px)]'}`}>
-        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-          <div>
-            <h3 className="text-lg font-black text-slate-900">Page Elements</h3>
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">{currentAnnotations.length} loaded</p>
-          </div>
-          <button onClick={() => setElementsDrawerOpen(false)} className="rounded-xl p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <div className="grid grid-cols-[1.5fr_0.9fr_0.8fr_1fr_1fr] gap-2 border-b border-slate-200 bg-slate-50 px-4 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
-          <div>Name</div>
-          <div>Type</div>
-          <div>Days</div>
-          <div>Start</div>
-          <div>End</div>
-        </div>
-        <div className="flex-1 overflow-y-auto px-3 py-3">
-          {currentAnnotations.length > 0 ? currentAnnotations.map((annotation) => {
-            const selected = selectedIds.includes(annotation.id);
-            return (
-              <div
-                key={annotation.id}
-                onClick={() => {
-                  setSelectedIds([annotation.id]);
-                  setActiveTool('select');
-                }}
-                className={`mb-2 rounded-2xl border px-3 py-3 transition-colors ${selected ? 'border-blue-300 bg-blue-50 shadow-[0_0_0_1px_rgba(59,130,246,0.18)]' : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'} cursor-pointer`}
-              >
-                <div className="grid grid-cols-[1.5fr_0.9fr_0.8fr_1fr_1fr] gap-2">
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-black text-slate-800">{annotation.memberName || 'Unnamed element'}</div>
-                    <div className="mt-1 h-2.5 w-12 rounded-full" style={{ backgroundColor: annotation.color }} />
-                  </div>
-                  <div className="truncate pt-0.5 text-xs font-bold text-slate-600">{annotation.elementType}</div>
-                  <div className="pt-0.5 text-xs font-black text-slate-700">{annotation.curingDurationDays ?? '-'}</div>
-                  <div onClick={(e) => e.stopPropagation()}>
-                    <input
-                      type="date"
-                      value={annotation.curingStartDate || ''}
-                      onChange={(e) => void handleUpdateAnnotationMeta(annotation.id, { curingStartDate: e.target.value })}
-                      className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px] font-bold text-slate-700 outline-none focus:border-blue-400"
-                    />
-                  </div>
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-[11px] font-bold text-slate-500">
-                    {annotation.curingEndDate || '-'}
-                  </div>
-                </div>
-              </div>
-            );
-          }) : (
-            <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-6 text-center text-sm font-bold text-slate-400">
-              No elements on this page yet.
-            </div>
-          )}
-        </div>
       </div>
 
       <div className="pointer-events-none absolute left-6 top-1/2 z-10 flex -translate-y-1/2 flex-col gap-2">
@@ -1670,6 +1805,130 @@ export default function Plans() {
           }) : (
             <div className="rounded-[1.5rem] border border-slate-200 bg-white px-4 py-3 text-xs font-black text-slate-500 shadow-sm">
               No structure plans linked.
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className={`absolute top-0 right-0 z-30 flex h-full w-[570px] flex-col border-l border-slate-200 bg-[linear-gradient(180deg,#fbfdff_0%,#f3f7fc_100%)] shadow-[-20px_0_40px_rgba(15,23,42,0.12)] backdrop-blur-xl transition-transform duration-500 ease-in-out ${elementsDrawerOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+        <div className="border-b border-slate-200 p-8">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-2xl font-black tracking-tight text-slate-900">Page Elements</h2>
+              <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.22em] text-slate-400">{currentAnnotations.length} loaded</p>
+            </div>
+            <button onClick={() => setElementsDrawerOpen(false)} className="text-slate-400 transition-colors hover:text-slate-700">
+              <X className="h-6 w-6" />
+            </button>
+          </div>
+          <div className="mt-5 flex items-center gap-2">
+            <button
+              onClick={handleToggleSelectAll}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black uppercase tracking-[0.16em] text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-900"
+              type="button"
+            >
+              {allSelected ? <CheckSquare2 className="h-4 w-4" /> : <SquareIcon className="h-4 w-4" />}
+              {allSelected ? 'Deselect All' : 'Select All'}
+            </button>
+            <button
+              onClick={() => void handleShowAllElements()}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black uppercase tracking-[0.16em] text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-900"
+              type="button"
+            >
+              <Eye className="h-4 w-4" />
+              Show All
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-[1.7fr_0.9fr_0.7fr_1.2fr_1.2fr_0.7fr] gap-2 border-b border-slate-200 px-5 py-5 text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">
+          {[
+            ['Name', 'memberName'],
+            ['Type', 'elementType'],
+            ['Days', 'curingDurationDays'],
+            ['Start', 'curingStartDate'],
+            ['End', 'curingEndDate'],
+          ].map(([label, key]) => (
+            <button
+              key={key}
+              onClick={() => handleSortElements(key as ElementSortKey)}
+              className="flex items-center gap-1 text-left transition-colors hover:text-slate-700"
+              type="button"
+            >
+              <span>{label}</span>
+              {elementSort.key === key && <span>{elementSort.direction === 'asc' ? '↑' : '↓'}</span>}
+            </button>
+          ))}
+          <div className="text-center">Show</div>
+        </div>
+
+        <div
+          className="flex-1 overflow-y-auto p-5 no-scrollbar"
+          onClick={(event) => {
+            if (event.target === event.currentTarget && !(event.ctrlKey || event.metaKey)) setSelectedIds([]);
+          }}
+        >
+          {sortedAnnotations.length > 0 ? sortedAnnotations.map((annotation) => {
+            const selected = selectedIds.includes(annotation.id);
+            return (
+              <div
+                key={annotation.id}
+                onClick={(event) => handleDrawerRowSelect(annotation.id, event)}
+                className={`mb-3 rounded-[1.35rem] border px-3 py-3 transition-colors ${selected ? 'border-blue-300 bg-blue-50 shadow-[0_0_0_1px_rgba(59,130,246,0.18)]' : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'} cursor-pointer`}
+              >
+                <div className="grid grid-cols-[1.7fr_0.9fr_0.7fr_1.2fr_1.2fr_0.7fr] gap-2">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      {selected ? <CheckSquare2 className="h-4 w-4 flex-shrink-0 text-blue-600" /> : <SquareIcon className="h-4 w-4 flex-shrink-0 text-slate-300" />}
+                      <span
+                        className="h-2.5 w-2.5 flex-shrink-0 rounded-full"
+                        style={{ backgroundColor: annotation.color }}
+                      />
+                      <div className="truncate text-sm font-black text-slate-800">{annotation.memberName || 'Unnamed element'}</div>
+                    </div>
+                  </div>
+                  <div className="truncate pt-0.5 text-xs font-bold text-slate-600">{annotation.elementType}</div>
+                  <div className="pt-0.5 text-xs font-black text-slate-700">{annotation.curingDurationDays ?? '-'}</div>
+                  <div onClick={(e) => e.stopPropagation()}>
+                    <input
+                      ref={(node) => { dateInputRefs.current[annotation.id] = node; }}
+                      type="date"
+                      value={annotation.curingStartDate || ''}
+                      onChange={(e) => void handleUpdateAnnotationMeta(annotation.id, { curingStartDate: e.target.value })}
+                      className="sr-only"
+                      tabIndex={-1}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const input = dateInputRefs.current[annotation.id];
+                        if (!input) return;
+                        if (typeof input.showPicker === 'function') input.showPicker();
+                        else input.click();
+                      }}
+                      className="w-full whitespace-nowrap bg-transparent px-2 py-1.5 text-left text-[11px] font-bold text-slate-700 outline-none cursor-pointer hover:text-blue-700"
+                    >
+                      {formatDisplayDate(annotation.curingStartDate)}
+                    </button>
+                  </div>
+                  <div className="whitespace-nowrap bg-transparent px-2 py-1.5 text-[11px] font-bold text-slate-500">
+                    {formatDisplayDate(annotation.curingEndDate)}
+                  </div>
+                  <div className="flex items-start justify-center pt-0.5" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      onClick={() => void handleUpdateAnnotationMeta(annotation.id, { isHidden: !annotation.isHidden })}
+                      className={`rounded-lg p-1.5 transition-colors ${annotation.isHidden ? 'text-slate-400 hover:bg-slate-100 hover:text-slate-700' : 'text-blue-700 hover:bg-blue-100'}`}
+                      type="button"
+                    >
+                      {annotation.isHidden ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          }) : (
+            <div className="rounded-[1.7rem] border border-dashed border-slate-300 bg-white px-5 py-10 text-center text-sm font-bold text-slate-400">
+              No elements on this page yet.
             </div>
           )}
         </div>
@@ -1924,6 +2183,72 @@ export default function Plans() {
                 className="rounded-2xl bg-slate-900 px-4 py-2.5 text-sm font-black text-white hover:bg-slate-800"
               >
                 OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {calibrationModalOpen && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/25">
+          <div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h3 className="text-xl font-black text-slate-900">Calibration</h3>
+                <p className="mt-1 text-sm font-medium text-slate-500">Enter the real length for the drawn line.</p>
+              </div>
+              <button
+                onClick={() => {
+                  setCalibrationModalOpen(false);
+                  setPendingCalibrationLine(null);
+                  setActiveTool('select');
+                }}
+                className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="mb-2 block text-xs font-black uppercase tracking-widest text-slate-500">Length</label>
+                <input
+                  value={calibrationDraft.value}
+                  onChange={(e) => setCalibrationDraft((current) => ({ ...current, value: e.target.value.replace(/\D/g, '') }))}
+                  inputMode="numeric"
+                  className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-500"
+                  placeholder="Enter digits only"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-xs font-black uppercase tracking-widest text-slate-500">Unit</label>
+                <select
+                  value={calibrationDraft.unit}
+                  onChange={(e) => setCalibrationDraft((current) => ({ ...current, unit: e.target.value as (typeof CALIBRATION_UNITS)[number] }))}
+                  className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-500"
+                >
+                  {CALIBRATION_UNITS.map((unit) => <option key={unit} value={unit}>{unit}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setCalibrationModalOpen(false);
+                  setPendingCalibrationLine(null);
+                  setActiveTool('select');
+                }}
+                className="rounded-2xl border border-slate-300 px-4 py-2.5 text-sm font-black text-slate-600 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => { void handleSaveCalibration(); }}
+                className="rounded-2xl bg-slate-900 px-4 py-2.5 text-sm font-black text-white hover:bg-slate-800"
+              >
+                Save
               </button>
             </div>
           </div>

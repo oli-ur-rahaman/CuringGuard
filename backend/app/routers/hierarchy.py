@@ -99,6 +99,15 @@ def _page_payload(page: DrawingPage) -> dict:
     }
     if page.source_page_number is not None:
         payload["page_number"] = page.source_page_number
+    if None not in (page.calibration_x1, page.calibration_y1, page.calibration_x2, page.calibration_y2, page.calibration_value) and page.calibration_unit:
+        payload["calibration"] = {
+            "points": [
+                {"x": page.calibration_x1, "y": page.calibration_y1},
+                {"x": page.calibration_x2, "y": page.calibration_y2},
+            ],
+            "value": page.calibration_value,
+            "unit": page.calibration_unit,
+        }
     return payload
 
 
@@ -231,6 +240,7 @@ def _serialize_drawing_element(element: DrawingElement) -> dict:
         "elementType": element.element_type,
         "memberName": element.member_name or "",
         "color": element.color,
+        "isHidden": bool(element.is_hidden),
         "points": json.loads(element.coordinates_json),
         "curingDurationDays": element.curing_duration_days,
         "curingStartDate": element.curing_start_date.isoformat() if element.curing_start_date else "",
@@ -522,6 +532,47 @@ def create_blank_drawing_page(
     }
 
 
+@router.patch("/drawings/{drawing_id}/pages/{page_ref:path}/calibration")
+def update_page_calibration(
+    drawing_id: int,
+    page_ref: str,
+    value: float = Form(...),
+    unit: str = Form(...),
+    x1: float = Form(...),
+    y1: float = Form(...),
+    x2: float = Form(...),
+    y2: float = Form(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    drawing = db.query(Drawing).filter(Drawing.id == drawing_id).first()
+    if not drawing:
+        raise HTTPException(status_code=404, detail="Drawing not found")
+
+    page = _get_page_or_404(db, drawing_id, page_ref)
+    normalized_unit = unit.strip().lower()
+    if normalized_unit not in {"ft", "in", "m", "mm"}:
+        raise HTTPException(status_code=400, detail="Invalid calibration unit.")
+    if value <= 0:
+        raise HTTPException(status_code=400, detail="Calibration value must be greater than zero.")
+
+    page.calibration_x1 = x1
+    page.calibration_y1 = y1
+    page.calibration_x2 = x2
+    page.calibration_y2 = y2
+    page.calibration_value = value
+    page.calibration_unit = normalized_unit
+    db.commit()
+    db.refresh(page)
+
+    return {
+        "status": "success",
+        "drawing_id": drawing_id,
+        "page_id": page_ref,
+        "page": _page_payload(page),
+    }
+
+
 @router.get("/drawings/{drawing_id}/canvas-data")
 def get_drawing_canvas_data(drawing_id: int, page_id: str | None = None, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     drawing = db.query(Drawing).filter(Drawing.id == drawing_id).first()
@@ -685,6 +736,7 @@ def save_drawing_annotations(
             annotation_type=(annotation.get("type") or "rect"),
             member_name=annotation.get("memberName") or "",
             color=(annotation.get("color") or "#3b82f6"),
+            is_hidden=bool(annotation.get("isHidden", False)),
             coordinates_json=json.dumps(points),
         )
         _apply_curing_fields(db, drawing_element, annotation)
@@ -712,6 +764,7 @@ def update_drawing_annotation(
     color: str | None = Form(None),
     element_type: str | None = Form(None),
     curing_start_date: str | None = Form(None),
+    is_hidden: str | None = Form(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -731,6 +784,8 @@ def update_drawing_annotation(
         element.member_name = member_name
     if color is not None:
         element.color = color
+    if is_hidden is not None:
+        element.is_hidden = is_hidden.strip().lower() in {"1", "true", "yes", "on"}
 
     payload = {
         "elementType": element_type if element_type is not None else element.element_type,

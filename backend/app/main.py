@@ -59,6 +59,10 @@ def ensure_runtime_schema():
     except Exception:
         structure_columns = set()
     try:
+        drawing_page_columns = {column["name"] for column in inspector.get_columns("drawing_pages")}
+    except Exception:
+        drawing_page_columns = set()
+    try:
         drawing_element_columns = {column["name"] for column in inspector.get_columns("drawing_elements")}
     except Exception:
         drawing_element_columns = set()
@@ -93,9 +97,22 @@ def ensure_runtime_schema():
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE structures ADD COLUMN is_deleted BOOLEAN NOT NULL DEFAULT FALSE"))
 
+    for column_name in ("calibration_x1", "calibration_y1", "calibration_x2", "calibration_y2", "calibration_value"):
+        if column_name not in drawing_page_columns:
+            with engine.begin() as connection:
+                connection.execute(text(f"ALTER TABLE drawing_pages ADD COLUMN {column_name} FLOAT NULL"))
+
+    if "calibration_unit" not in drawing_page_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE drawing_pages ADD COLUMN calibration_unit VARCHAR(16) NULL"))
+
     if "curing_duration_days" not in drawing_element_columns:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE drawing_elements ADD COLUMN curing_duration_days INTEGER NULL"))
+
+    if "is_hidden" not in drawing_element_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE drawing_elements ADD COLUMN is_hidden BOOLEAN NOT NULL DEFAULT FALSE"))
 
     if "curing_start_date" not in drawing_element_columns:
         with engine.begin() as connection:
