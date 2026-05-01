@@ -65,9 +65,25 @@ def _get_or_create_system_setting(db: Session) -> dict:
         "progress",
         "Hour offset to apply on top of server UTC time when capture time falls back to server time",
     )
+    sms_api_row = _ensure_setting_row(
+        db,
+        "sms_api_key",
+        "",
+        "notifications",
+        "Green Heritage IT SMS API key",
+    )
+    message_format_row = _ensure_setting_row(
+        db,
+        "automatic_message_format",
+        "Dear {contractor_name}, please carry out curing for structure {structure_name} today and submit the progress update in CuringGuard.",
+        "notifications",
+        "Automatic message template for scheduled structure reminders",
+    )
     return {
         "manual_file_entry_enabled": str(manual_row["setting_value"]).lower() != "no",
         "server_time_offset_hours": int(offset_row["setting_value"] or 0),
+        "sms_api_key": sms_api_row["setting_value"] or "",
+        "automatic_message_format": message_format_row["setting_value"] or "",
         "server_now_utc": datetime.now(timezone.utc),
         "updated_at": None,
     }
@@ -91,6 +107,8 @@ def update_system_settings(
     current = _get_or_create_system_setting(db)
     manual_enabled = current["manual_file_entry_enabled"] if payload.manual_file_entry_enabled is None else payload.manual_file_entry_enabled
     server_offset = current["server_time_offset_hours"] if payload.server_time_offset_hours is None else payload.server_time_offset_hours
+    sms_api_key = current["sms_api_key"] if payload.sms_api_key is None else payload.sms_api_key
+    automatic_message_format = current["automatic_message_format"] if payload.automatic_message_format is None else payload.automatic_message_format
     db.execute(
         text("UPDATE system_settings SET setting_value = :value WHERE setting_key = 'manual_file_entry'"),
         {"value": "yes" if manual_enabled else "no"},
@@ -99,10 +117,20 @@ def update_system_settings(
         text("UPDATE system_settings SET setting_value = :value WHERE setting_key = 'server_time_offset_hours'"),
         {"value": str(int(server_offset))},
     )
+    db.execute(
+        text("UPDATE system_settings SET setting_value = :value WHERE setting_key = 'sms_api_key'"),
+        {"value": sms_api_key or ""},
+    )
+    db.execute(
+        text("UPDATE system_settings SET setting_value = :value WHERE setting_key = 'automatic_message_format'"),
+        {"value": automatic_message_format or ""},
+    )
     db.commit()
     return {
         "manual_file_entry_enabled": manual_enabled,
         "server_time_offset_hours": int(server_offset),
+        "sms_api_key": sms_api_key or "",
+        "automatic_message_format": automatic_message_format or "",
         "server_now_utc": datetime.now(timezone.utc),
         "updated_at": None,
     }

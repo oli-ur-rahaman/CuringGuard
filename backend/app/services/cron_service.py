@@ -4,6 +4,7 @@ from datetime import datetime
 from backend.app.core.database import SessionLocal
 from backend.app.models.curing import GeometryElement
 from backend.app.models.users import User
+from backend.app.services.notification_service import process_daily_structure_notifications
 from backend.app.services.sms_service import SMSService
 import logging
 
@@ -61,10 +62,24 @@ def check_curing_status_and_notify():
     finally:
         db.close()
 
+
+def process_structure_notifications_job():
+    logger.info("Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...")
+    db = SessionLocal()
+    try:
+        process_daily_structure_notifications(db)
+        logger.info("Notification Cron Job completed successfully.")
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error during structure notification job execution: {e}")
+    finally:
+        db.close()
+
 def start_scheduler():
     scheduler = BackgroundScheduler()
     # Schedule the task to run every morning at 8:00 AM
     trigger = CronTrigger(hour=8, minute=0)
     scheduler.add_job(check_curing_status_and_notify, trigger)
+    scheduler.add_job(process_structure_notifications_job, CronTrigger(minute="*"))
     scheduler.start()
-    logger.info("Background Cron Scheduler started. Tasks scheduled for 8:00 AM daily.")
+    logger.info("Background Cron Scheduler started. Tasks scheduled for 8:00 AM daily and structure notifications every minute.")

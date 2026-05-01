@@ -35,7 +35,7 @@ app.add_middleware(
 )
 
 from backend.app.core.database import engine, Base
-from backend.app.routers import auth, hierarchy, users, curing, library, gateways, progress, system
+from backend.app.routers import auth, hierarchy, users, curing, library, gateways, progress, system, notifications
 
 # Initialize all database tables
 Base.metadata.create_all(bind=engine)
@@ -305,6 +305,31 @@ def ensure_runtime_schema():
                         VALUES ('server_time_offset_hours', '0', 'progress', 'Hour offset to apply on top of server UTC time when capture time falls back to server time')
                     """)
                 )
+            sms_api_row = connection.execute(
+                text("SELECT id FROM system_settings WHERE setting_key = 'sms_api_key' ORDER BY id ASC LIMIT 1")
+            ).mappings().first()
+            if not sms_api_row:
+                connection.execute(
+                    text("""
+                        INSERT INTO system_settings (setting_key, setting_value, category, description)
+                        VALUES ('sms_api_key', '', 'notifications', 'Green Heritage IT SMS API key')
+                    """)
+                )
+            message_format_row = connection.execute(
+                text("SELECT id FROM system_settings WHERE setting_key = 'automatic_message_format' ORDER BY id ASC LIMIT 1")
+            ).mappings().first()
+            if not message_format_row:
+                connection.execute(
+                    text("""
+                        INSERT INTO system_settings (setting_key, setting_value, category, description)
+                        VALUES (
+                            'automatic_message_format',
+                            'Dear {contractor_name}, please carry out curing for structure {structure_name} today and submit the progress update in CuringGuard.',
+                            'notifications',
+                            'Automatic message template for scheduled structure reminders'
+                        )
+                    """)
+                )
 
     if "source_type" not in progress_media_columns:
         with engine.begin() as connection:
@@ -345,6 +370,7 @@ app.include_router(library.router)
 app.include_router(gateways.router)
 app.include_router(progress.router)
 app.include_router(system.router)
+app.include_router(notifications.router)
 
 @app.get("/")
 def health_check():

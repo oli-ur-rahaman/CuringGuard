@@ -11,11 +11,11 @@ class SMSService:
     BASE_URL = "http://sms.greenheritageit.com/smsapi"
     
     @classmethod
-    def send_sms(cls, recipients: list, sender_id: str, message: str, transaction_type: str = "T"):
+    def send_sms(cls, recipients: list, sender_id: str, message: str, transaction_type: str = "T", api_key: str | None = None):
         """
         Sends SMS to multiple recipients using Green Heritage IT JSON batch POST API.
         """
-        api_key = os.getenv("SMS_API_KEY", "MISSING_KEY")
+        api_key = api_key if api_key is not None else os.getenv("SMS_API_KEY", "MISSING_KEY")
         
         sms_data = []
         for number in recipients:

@@ -1,10 +1,16 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { LayoutDashboard, Map, Users, Settings, Menu, Bell, X, FolderGit2, LogOut, CalendarRange } from 'lucide-react';
-import { authService } from '../services/api';
+import { authService, notificationService } from '../services/api';
 import logoFinal from '../assets/logo_final.png';
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 768);
+  const [notificationOpen, setNotificationOpen] = useState(false);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [loadingNotifications, setLoadingNotifications] = useState(false);
+  const notificationRef = useRef<HTMLDivElement | null>(null);
+  const currentUser = authService.getCurrentUser();
+  const unreadCount = notifications.filter((item) => !item.is_read).length;
 
   const navItems = [
     { name: 'Dashboard', path: '/', icon: LayoutDashboard },
@@ -14,6 +20,45 @@ export default function Layout() {
     { name: 'Contractor Mgmt', path: '/contractors', icon: Users },
     { name: 'Settings', path: '/settings', icon: Settings },
   ];
+
+  const loadNotifications = async () => {
+    try {
+      setLoadingNotifications(true);
+      const data = await notificationService.getWebNotifications();
+      setNotifications(data);
+    } catch (error) {
+      console.error('Failed to load notifications', error);
+    } finally {
+      setLoadingNotifications(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadNotifications();
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
+        setNotificationOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleNotificationClick = async (notification: any) => {
+    try {
+      if (!notification.is_read) {
+        await notificationService.markWebNotificationRead(notification.id);
+        setNotifications((prev) =>
+          prev.map((item) => (item.id === notification.id ? { ...item, is_read: true } : item))
+        );
+      }
+    } catch (error) {
+      console.error('Failed to mark notification read', error);
+    }
+  };
 
   return (
     <div className="h-[100dvh] w-screen bg-slate-50 flex font-sans overflow-hidden">
@@ -70,12 +115,65 @@ export default function Layout() {
             <Menu className="w-6 h-6" />
           </button>
           <div className="flex items-center gap-2 md:gap-4">
-            <button className="relative p-2 text-slate-500 hover:bg-slate-100 rounded-full">
-              <Bell className="w-5 h-5" />
-              <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
-            </button>
+            <div className="relative" ref={notificationRef}>
+              <button
+                onClick={() => setNotificationOpen((current) => !current)}
+                className="relative p-2 text-slate-500 hover:bg-slate-100 rounded-full"
+              >
+                <Bell className="w-5 h-5" />
+                {unreadCount > 0 && (
+                  <span className="absolute top-1 right-1 min-w-[18px] h-[18px] px-1 bg-red-500 rounded-full border-2 border-white text-[10px] font-black text-white flex items-center justify-center">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </button>
+              {notificationOpen && (
+                <div className="absolute right-0 top-12 z-50 w-[360px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.18)]">
+                  <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3">
+                    <div>
+                      <p className="text-sm font-black text-slate-900">Web Notifications</p>
+                      <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400">{unreadCount} unread</p>
+                    </div>
+                    <button
+                      onClick={() => { void loadNotifications(); }}
+                      className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-black uppercase tracking-wider text-slate-600 hover:bg-slate-100"
+                    >
+                      Refresh
+                    </button>
+                  </div>
+                  <div className="max-h-[420px] overflow-y-auto">
+                    {loadingNotifications ? (
+                      <div className="flex items-center justify-center py-10 text-slate-500 text-sm font-bold">Loading...</div>
+                    ) : notifications.length === 0 ? (
+                      <div className="px-4 py-10 text-center text-sm font-bold text-slate-500">No notifications yet.</div>
+                    ) : (
+                      notifications.map((notification) => (
+                        <button
+                          key={notification.id}
+                          onClick={() => { void handleNotificationClick(notification); }}
+                          className={`block w-full border-b border-slate-100 px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-slate-50 ${
+                            notification.is_read ? 'bg-white' : 'bg-blue-50/50'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-black text-slate-900">{notification.title}</p>
+                              <p className="mt-1 text-sm font-medium leading-5 text-slate-600">{notification.message}</p>
+                            </div>
+                            {!notification.is_read && <span className="mt-1 h-2.5 w-2.5 rounded-full bg-blue-600" />}
+                          </div>
+                          <p className="mt-2 text-[11px] font-bold uppercase tracking-widest text-slate-400">
+                            {notification.dispatch_date || 'Immediate'} · {notification.channel}
+                          </p>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
             <div className="w-8 h-8 md:w-9 md:h-9 rounded-full bg-slate-800 flex items-center justify-center text-white font-bold text-sm cursor-pointer hover:bg-slate-700 transition">
-              AD
+              {((currentUser?.full_name || currentUser?.username || 'A') as string).slice(0, 2).toUpperCase()}
             </div>
           </div>
         </header>

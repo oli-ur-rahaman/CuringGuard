@@ -386,18 +386,50 @@ export const systemService = {
     return response.data as {
       manual_file_entry_enabled: boolean;
       server_time_offset_hours: number;
+      sms_api_key: string;
+      automatic_message_format: string;
       server_now_utc: string;
       updated_at?: string | null;
     };
   },
-  updateSettings: async (data: { manual_file_entry_enabled?: boolean; server_time_offset_hours?: number }) => {
+  updateSettings: async (data: {
+    manual_file_entry_enabled?: boolean;
+    server_time_offset_hours?: number;
+    sms_api_key?: string;
+    automatic_message_format?: string;
+  }) => {
     const response = await api.patch('/system/settings', data);
     return response.data as {
       manual_file_entry_enabled: boolean;
       server_time_offset_hours: number;
+      sms_api_key: string;
+      automatic_message_format: string;
       server_now_utc: string;
       updated_at?: string | null;
     };
+  },
+};
+
+export const notificationService = {
+  getWebNotifications: async (unreadOnly = false) => {
+    const response = await api.get('/notifications/web', { params: { unread_only: unreadOnly } });
+    return response.data;
+  },
+  markWebNotificationRead: async (notificationId: number) => {
+    const response = await api.post(`/notifications/web/${notificationId}/read`);
+    return response.data;
+  },
+  sendCustomMessage: async (data: { contractor_id: number; message: string; structure_id?: number }) => {
+    const response = await api.post('/notifications/custom-message', data);
+    return response.data;
+  },
+  getStructureSettings: async () => {
+    const response = await api.get('/notifications/structure-settings');
+    return response.data;
+  },
+  updateStructureSettings: async (structureId: number, data: { notification_time?: string; auto_sms_enabled?: boolean; auto_web_enabled?: boolean }) => {
+    const response = await api.patch(`/notifications/structures/${structureId}/settings`, data);
+    return response.data;
   },
 };
 

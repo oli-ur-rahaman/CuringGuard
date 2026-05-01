@@ -2,9 +2,9 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Building2, PackageOpen, FolderGit2, 
-  ChevronRight, Plus, UserPlus, HardHat, ChevronDown, Loader2, Trash2, FileText, PenSquare
+  ChevronRight, Plus, UserPlus, HardHat, ChevronDown, Loader2, Trash2, FileText, PenSquare, BellRing
 } from 'lucide-react';
-import { hierarchyService, userService, authService, curingService } from '../services/api';
+import { hierarchyService, userService, authService, curingService, notificationService } from '../services/api';
 
 const HIERARCHY_VIEW_KEY = 'curingguard.hierarchy.view';
 
@@ -46,9 +46,11 @@ export default function ProjectSetup() {
   const [structures, setStructures] = useState<any[]>([]);
   const [contractors, setContractors] = useState<any[]>([]);
   const [drawingsByStructure, setDrawingsByStructure] = useState<Record<number, any[]>>({});
+  const [notificationSettingsByStructure, setNotificationSettingsByStructure] = useState<Record<number, { notification_time: string; auto_sms_enabled: boolean; auto_web_enabled: boolean }>>({});
   const [selectedStructureForUpload, setSelectedStructureForUpload] = useState<number | null>(null);
   const [uploadingStructureId, setUploadingStructureId] = useState<number | null>(null);
   const [deletingDrawingId, setDeletingDrawingId] = useState<number | null>(null);
+  const [savingNotificationStructureId, setSavingNotificationStructureId] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const initialFetchDoneRef = useRef(false);
 
@@ -90,6 +92,21 @@ export default function ProjectSetup() {
       ]);
       setProjects(projData);
       setContractors(conData);
+      if (user?.role === 'monitor') {
+        const structureSettings = await notificationService.getStructureSettings();
+        setNotificationSettingsByStructure(
+          Object.fromEntries(
+            structureSettings.map((setting: any) => [
+              setting.structure_id,
+              {
+                notification_time: setting.notification_time || '08:00',
+                auto_sms_enabled: !!setting.auto_sms_enabled,
+                auto_web_enabled: setting.auto_web_enabled !== false,
+              },
+            ])
+          )
+        );
+      }
       if (projData.length > 0) {
         const restoredProjectId = persistedViewRef.current.projectId;
         const nextProjectId = restoredProjectId && projData.some((project: any) => project.id === restoredProjectId)
@@ -338,6 +355,77 @@ export default function ProjectSetup() {
     }
   };
 
+  const handleNotificationSettingChange = async (
+    structureId: number,
+    patch: { notification_time?: string; auto_sms_enabled?: boolean }
+  ) => {
+    const current = notificationSettingsByStructure[structureId] || {
+      notification_time: '08:00',
+      auto_sms_enabled: false,
+      auto_web_enabled: true,
+    };
+    const optimistic = { ...current, ...patch };
+    setNotificationSettingsByStructure((prev) => ({ ...prev, [structureId]: optimistic }));
+    try {
+      setSavingNotificationStructureId(structureId);
+      const updated = await notificationService.updateStructureSettings(structureId, patch);
+      setNotificationSettingsByStructure((prev) => ({
+        ...prev,
+        [structureId]: {
+          notification_time: updated.notification_time || '08:00',
+          auto_sms_enabled: !!updated.auto_sms_enabled,
+          auto_web_enabled: updated.auto_web_enabled !== false,
+        },
+      }));
+    } catch (error: any) {
+      setNotificationSettingsByStructure((prev) => ({ ...prev, [structureId]: current }));
+      alert(error.response?.data?.detail || 'Failed to update notification settings.');
+    } finally {
+      setSavingNotificationStructureId(null);
+    }
+  };
+
+  const renderNotificationControls = (structureId: number) => {
+    const settings = notificationSettingsByStructure[structureId] || {
+      notification_time: '08:00',
+      auto_sms_enabled: false,
+      auto_web_enabled: true,
+    };
+    const isSaving = savingNotificationStructureId === structureId;
+
+    return (
+      <div className="mb-4 rounded-[18px] border border-white bg-white px-4 py-4 shadow-sm">
+        <div className="mb-3 flex items-center gap-2">
+          <BellRing className="h-4 w-4 text-blue-600" />
+          <span className="text-[11px] font-extrabold uppercase tracking-[0.18em] text-slate-600">Notifications</span>
+          {isSaving && <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin text-slate-400" />}
+        </div>
+        <div className="grid grid-cols-1 gap-3 xl:grid-cols-[150px_1fr]">
+          <div>
+            <label className="mb-1.5 block text-[10px] font-extrabold uppercase tracking-[0.18em] text-slate-400">SMS Time</label>
+            <input
+              type="time"
+              value={settings.notification_time}
+              onChange={(e) => { void handleNotificationSettingChange(structureId, { notification_time: e.target.value }); }}
+              className="h-[44px] w-full rounded-[14px] border border-slate-200 bg-white px-3 text-sm font-extrabold text-slate-700 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+            />
+          </div>
+          <div className="flex items-end">
+            <button
+              type="button"
+              onClick={() => { void handleNotificationSettingChange(structureId, { auto_sms_enabled: !settings.auto_sms_enabled }); }}
+              className={`inline-flex h-[44px] min-w-[138px] items-center justify-center rounded-[14px] px-4 text-[12px] font-extrabold uppercase tracking-wider transition-colors ${
+                settings.auto_sms_enabled ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-700'
+              }`}
+            >
+              Auto SMS {settings.auto_sms_enabled ? 'On' : 'Off'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   if (loading && projects.length === 0) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -513,6 +601,8 @@ export default function ProjectSetup() {
                             </button>
                           </div>
 
+                          {renderNotificationControls(s.id)}
+
                           <div>
                             <div className="mb-3">
                               <span className="inline-flex rounded-sm border border-white bg-white px-2 py-0.5 text-[11px] font-extrabold uppercase tracking-[0.18em] text-slate-600 shadow-sm">
@@ -656,6 +746,8 @@ export default function ProjectSetup() {
                          + Create Contractor
                        </button>
                      </div>
+
+                     {renderNotificationControls(s.id)}
 
                      <div>
                        <div className="mb-3">

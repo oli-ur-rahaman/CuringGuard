@@ -15,7 +15,12 @@ export default function Superadmin() {
   const [elements, setElements] = useState<any[]>([]);
   const [globalContractors] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [systemSettings, setSystemSettings] = useState({ manual_file_entry_enabled: true, server_time_offset_hours: 0 });
+  const [systemSettings, setSystemSettings] = useState({
+    manual_file_entry_enabled: true,
+    server_time_offset_hours: 0,
+    sms_api_key: '',
+    automatic_message_format: '',
+  });
   const [systemSaving, setSystemSaving] = useState(false);
 
   // Search & Filter States
@@ -45,6 +50,8 @@ export default function Superadmin() {
         setSystemSettings({
           manual_file_entry_enabled: !!data.manual_file_entry_enabled,
           server_time_offset_hours: Number(data.server_time_offset_hours || 0),
+          sms_api_key: data.sms_api_key || '',
+          automatic_message_format: data.automatic_message_format || '',
         });
       }
     } catch (err) {
@@ -199,6 +206,8 @@ export default function Superadmin() {
       setSystemSettings({
         manual_file_entry_enabled: !!response.manual_file_entry_enabled,
         server_time_offset_hours: Number(response.server_time_offset_hours || 0),
+        sms_api_key: response.sms_api_key || '',
+        automatic_message_format: response.automatic_message_format || '',
       });
       alert('System settings updated successfully.');
     } catch (err: any) {
@@ -468,7 +477,7 @@ export default function Superadmin() {
                    <h2 className="text-2xl md:text-3xl font-extrabold text-slate-900 flex items-center gap-3 tracking-tight">
                       <Settings2 className="w-8 h-8 text-blue-600" /> System Settings
                    </h2>
-                   <p className="text-slate-500 font-medium mt-2">Control manual progress upload and fallback server time offset.</p>
+                   <p className="text-slate-500 font-medium mt-2">Control progress capture and notification settings.</p>
                 </div>
 
                 <div className="max-w-3xl rounded-[2rem] border border-slate-200 bg-white p-8 shadow-sm space-y-8">
@@ -496,6 +505,28 @@ export default function Superadmin() {
                       className="w-full max-w-sm border-2 border-slate-200 rounded-xl p-3.5 font-extrabold text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
                     />
                     <p className="mt-2 text-sm font-medium text-slate-500">Used only when capture time falls back to server time.</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-extrabold text-slate-500 uppercase tracking-widest mb-2.5">SMS API Key</label>
+                    <input
+                      type="text"
+                      value={systemSettings.sms_api_key}
+                      onChange={(e) => setSystemSettings((current) => ({ ...current, sms_api_key: e.target.value }))}
+                      className="w-full border-2 border-slate-200 rounded-xl p-3.5 font-extrabold text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
+                    />
+                    <p className="mt-2 text-sm font-medium text-slate-500">Green Heritage IT API key used for SMS notifications.</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-extrabold text-slate-500 uppercase tracking-widest mb-2.5">Automatic Message Format</label>
+                    <textarea
+                      rows={4}
+                      value={systemSettings.automatic_message_format}
+                      onChange={(e) => setSystemSettings((current) => ({ ...current, automatic_message_format: e.target.value }))}
+                      className="w-full border-2 border-slate-200 rounded-xl p-3.5 font-extrabold text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
+                    />
+                    <p className="mt-2 text-sm font-medium text-slate-500">Available placeholders: {'{contractor_name}'}, {'{monitor_name}'}, {'{structure_name}'}, {'{active_elements_count}'}, {'{date}'}.</p>
                   </div>
 
                   <div className="flex justify-end">

@@ -1,16 +1,26 @@
-import { useEffect, useState } from 'react';
-import { AlertCircle, CheckCircle2, Clock, Loader2, Send } from 'lucide-react';
-import { curingService, userService } from '../services/api';
+import { useEffect, useMemo, useState } from 'react';
+import { AlertCircle, CheckCircle2, Clock, Loader2, MessageSquareText, Send } from 'lucide-react';
+import { authService, curingService, notificationService, userService } from '../services/api';
 
 export default function Dashboard() {
   const [elements, setElements] = useState<any[]>([]);
+  const [contractors, setContractors] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [messageSaving, setMessageSaving] = useState(false);
+  const [selectedContractorId, setSelectedContractorId] = useState<number>(0);
+  const [customMessage, setCustomMessage] = useState('');
+  const currentUser = authService.getCurrentUser();
+  const isMonitor = currentUser?.role === 'monitor';
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const data = await curingService.getElements();
+        const [data, contractorData] = await Promise.all([
+          curingService.getElements(),
+          isMonitor ? userService.getUsers(undefined, 'contractor') : Promise.resolve([]),
+        ]);
         setElements(data);
+        setContractors(contractorData);
       } catch (error) {
         console.error("Failed to fetch elements", error);
       } finally {
@@ -47,12 +57,43 @@ export default function Dashboard() {
     return diff < (1000 * 60 * 60 * 24 * 2); // Within 48 hours for warning
   });
 
+  const selectedContractor = useMemo(
+    () => contractors.find((contractor) => contractor.id === selectedContractorId) || null,
+    [contractors, selectedContractorId]
+  );
+
   const handlePing = async (contractorId: number, elementId: string) => {
     try {
       await userService.pingUser(contractorId, `URGENT: Curing monitor for ${elementId} requires immediate attention.`);
       alert("Ping notification sent via Green Heritage IT SMS.");
     } catch (error) {
       alert("Failed to send notification.");
+    }
+  };
+
+  const handleSendCustomMessage = async () => {
+    if (!selectedContractorId) {
+      alert('Select a contractor first.');
+      return;
+    }
+    const trimmedMessage = customMessage.trim();
+    if (!trimmedMessage) {
+      alert('Type a custom message first.');
+      return;
+    }
+
+    try {
+      setMessageSaving(true);
+      await notificationService.sendCustomMessage({
+        contractor_id: selectedContractorId,
+        message: trimmedMessage,
+      });
+      setCustomMessage('');
+      alert('Instruction sent successfully.');
+    } catch (error: any) {
+      alert(error.response?.data?.detail || 'Failed to send instruction.');
+    } finally {
+      setMessageSaving(false);
     }
   };
 
@@ -145,6 +186,60 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+
+      {isMonitor && (
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="px-6 py-5 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
+            <div>
+              <h3 className="text-lg font-semibold text-slate-900">Custom SMS Instruction</h3>
+              <p className="text-sm text-slate-500 mt-1">Send direct curing instructions to a contractor. Sender name will be your full name.</p>
+            </div>
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-700 uppercase">SMS + Web</span>
+          </div>
+          <div className="p-6 grid grid-cols-1 xl:grid-cols-[320px_1fr_auto] gap-4 items-start">
+            <div>
+              <label className="block text-[11px] font-extrabold text-slate-400 uppercase tracking-widest mb-2">Target Contractor</label>
+              <select
+                value={selectedContractorId || ''}
+                onChange={(e) => setSelectedContractorId(Number(e.target.value || 0))}
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+              >
+                <option value="">Select contractor</option>
+                {contractors.map((contractor) => (
+                  <option key={contractor.id} value={contractor.id}>
+                    {contractor.full_name || contractor.username}
+                  </option>
+                ))}
+              </select>
+              {selectedContractor && (
+                <p className="mt-2 text-xs font-bold text-slate-500">
+                  {selectedContractor.mobile_number || 'No mobile number'}
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-extrabold text-slate-400 uppercase tracking-widest mb-2">Message</label>
+              <textarea
+                rows={3}
+                value={customMessage}
+                onChange={(e) => setCustomMessage(e.target.value)}
+                placeholder="Type custom curing instruction for the selected contractor..."
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+              />
+            </div>
+
+            <button
+              onClick={() => { void handleSendCustomMessage(); }}
+              disabled={messageSaving}
+              className="inline-flex h-[50px] items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 text-sm font-black text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {messageSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageSquareText className="w-4 h-4" />}
+              Send Message
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
