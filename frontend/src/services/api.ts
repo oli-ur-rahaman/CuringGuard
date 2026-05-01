@@ -365,4 +365,19 @@ export const gatewayService = {
   }
 };
 
+export const progressService = {
+  getRows: async () => {
+    const response = await api.get('/progress/rows');
+    return response.data;
+  },
+  createEntry: async (formData: FormData) => {
+    const response = await api.post('/progress/entries', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
+};
+
 export default api;

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { LayoutDashboard, Map, Users, Settings, Menu, Bell, X, FolderGit2, LogOut } from 'lucide-react';
+import { LayoutDashboard, Map, Users, Settings, Menu, Bell, X, FolderGit2, LogOut, CalendarRange } from 'lucide-react';
 import { authService } from '../services/api';
 import logoFinal from '../assets/logo_final.png';
 export default function Layout() {
@@ -10,6 +10,7 @@ export default function Layout() {
     { name: 'Dashboard', path: '/', icon: LayoutDashboard },
     { name: 'Project Hierarchy', path: '/setup', icon: FolderGit2 },
     { name: 'PDF Plans & Canvas', path: '/plans', icon: Map },
+    { name: 'Curing Progress', path: '/progress', icon: CalendarRange },
     { name: 'Contractor Mgmt', path: '/contractors', icon: Users },
     { name: 'Settings', path: '/settings', icon: Settings },
   ];

@@ -14,6 +14,7 @@ class CuringRuleCreate(CuringRuleBase):
 
 class CuringRuleResponse(CuringRuleBase):
     id: int
+    user_id: Optional[int] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

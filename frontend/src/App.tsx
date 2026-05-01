@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Plans from './pages/Plans';
+import CuringProgress from './pages/CuringProgress';
 import ProjectSetup from './pages/ProjectSetup';
 import Contractors from './pages/Contractors';
 import Superadmin from './pages/Superadmin';
@@ -36,6 +37,7 @@ function App() {
           <Route index element={<Dashboard />} />
           <Route path="setup" element={<ProjectSetup />} />
           <Route path="plans" element={<Plans />} />
+          <Route path="progress" element={<CuringProgress />} />
           <Route path="contractors" element={<Contractors />} />
           <Route path="settings" element={<Settings />} />
         </Route>

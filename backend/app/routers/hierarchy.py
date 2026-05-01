@@ -12,7 +12,7 @@ from backend.app.core.database import get_db
 from backend.app.core.auth import get_current_user, get_password_hash
 from backend.app.models.users import User, UserRole
 from backend.app.models.hierarchy import Project, Package, Structure, Drawing, DrawingPage
-from backend.app.models.curing import GeometryElement, ElementType, DrawingElement, CuringRule
+from backend.app.models.curing import GeometryElement, ElementType, DrawingElement, CustomElement, DefaultElement
 from backend.app.services.geometry_service import GeometryService
 from backend.app.services.pdf_service import PdfService
 from backend.app.schemas.hierarchy import (
@@ -187,12 +187,18 @@ def _get_page_or_404(db: Session, drawing_id: int, page_ref: str) -> DrawingPage
     return page
 
 
-def _resolve_curing_duration_days(db: Session, element_type: str) -> int | None:
+def _resolve_curing_duration_days(db: Session, element_type: str, user_id: int | None = None) -> int | None:
     normalized = (element_type or "").strip().lower()
     if not normalized:
         return None
 
-    rules = db.query(CuringRule).filter(CuringRule.is_active == True).all()
+    if user_id:
+        rules = db.query(CustomElement).filter(
+            CustomElement.user_id == user_id,
+            CustomElement.is_active == True,
+        ).all()
+    else:
+        rules = db.query(DefaultElement).filter(DefaultElement.is_active == True).all()
     for rule in rules:
         if (rule.element_name or "").strip().lower() == normalized:
             return rule.required_curing_days
@@ -217,10 +223,10 @@ def _coerce_optional_date(value) -> date | None:
     return None
 
 
-def _apply_curing_fields(db: Session, drawing_element: DrawingElement, payload: dict):
+def _apply_curing_fields(db: Session, drawing_element: DrawingElement, payload: dict, user_id: int | None = None):
     next_type = (payload.get("elementType") or drawing_element.element_type or "Other").strip() or "Other"
     requested_duration = payload.get("curingDurationDays")
-    resolved_duration = requested_duration if isinstance(requested_duration, int) else _resolve_curing_duration_days(db, next_type)
+    resolved_duration = requested_duration if isinstance(requested_duration, int) else _resolve_curing_duration_days(db, next_type, user_id)
     start_date = _coerce_optional_date(payload.get("curingStartDate"))
 
     drawing_element.element_type = next_type
@@ -756,7 +762,7 @@ def save_drawing_annotations(
             is_hidden=bool(annotation.get("isHidden", False)),
             coordinates_json=json.dumps(points),
         )
-        _apply_curing_fields(db, drawing_element, annotation)
+        _apply_curing_fields(db, drawing_element, annotation, current_user.id if current_user.role == UserRole.MONITOR else None)
         db.add(drawing_element)
     db.commit()
     elements = db.query(DrawingElement).filter(
@@ -808,7 +814,7 @@ def update_drawing_annotation(
         "elementType": element_type if element_type is not None else element.element_type,
         "curingStartDate": curing_start_date if curing_start_date is not None else element.curing_start_date,
     }
-    _apply_curing_fields(db, element, payload)
+    _apply_curing_fields(db, element, payload, current_user.id if current_user.role == UserRole.MONITOR else None)
     db.commit()
     db.refresh(element)
     return {

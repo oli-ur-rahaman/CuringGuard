@@ -5,6 +5,7 @@ from typing import List
 
 from backend.app.core.auth import get_current_user, get_password_hash
 from backend.app.core.database import get_db
+from backend.app.models.curing import CustomElement, DefaultElement
 from backend.app.models.users import User, UserRole
 from backend.app.schemas.users import UserCreate, UserResponse
 from backend.app.services.sms_service import SMSService
@@ -93,6 +94,18 @@ def create_user(user: UserCreate, db: Session = Depends(get_db), current_user: U
 
     try:
         db.add(db_user)
+        db.flush()
+        if user.role == UserRole.MONITOR:
+            default_elements = db.query(DefaultElement).order_by(DefaultElement.id.asc()).all()
+            for element in default_elements:
+                db.add(CustomElement(
+                    user_id=db_user.id,
+                    element_name=element.element_name,
+                    geometry_type=element.geometry_type,
+                    required_curing_days=element.required_curing_days,
+                    description=element.description,
+                    is_active=element.is_active,
+                ))
         db.commit()
         db.refresh(db_user)
     except IntegrityError:

@@ -74,6 +74,7 @@ type CuringRuleRecord = {
   element_name: string;
   geometry_type: string;
   required_curing_days: number;
+  description?: string;
   is_active: boolean;
 };
 type ElementSortKey = 'memberName' | 'elementType' | 'curingDurationDays' | 'curingStartDate' | 'curingEndDate';
@@ -86,6 +87,13 @@ type ToolConfig = {
 type ElementEditDraft = {
   memberName: string;
   color: string;
+};
+type CustomElementDraft = {
+  id?: number;
+  element_name: string;
+  description: string;
+  required_curing_days: string;
+  geometry_type: string;
 };
 type SelectionBox = { start: Point; end: Point };
 type DrawingSession =
@@ -112,7 +120,6 @@ const TOOL_CONFIG_DEFAULT: ToolConfig = {
 const DRAWING_TOOLS: ToolId[] = ['rect', 'polygon', 'line', 'point'];
 const CALIBRATION_UNITS = ['ft', 'in', 'm', 'mm'] as const;
 const COLOR_SWATCHES = ['#3b82f6', '#16a34a', '#f59e0b', '#ef4444', '#8b5cf6', '#0f766e', '#ec4899', '#64748b'];
-const ELEMENT_TYPE_OPTIONS = ['Wall', 'Column', 'Beam', 'Slab', 'Zone', 'Opening', 'Other'];
 const PLAN_WORKSPACE_KEY = 'curingguard.plan.workspace';
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
@@ -366,6 +373,11 @@ export default function Plans() {
   const [calibrationDraft, setCalibrationDraft] = useState<{ value: string; unit: (typeof CALIBRATION_UNITS)[number] }>({ value: '', unit: 'ft' });
   const [elementEditModalOpen, setElementEditModalOpen] = useState(false);
   const [elementEditDraft, setElementEditDraft] = useState<ElementEditDraft>({ memberName: '', color: TOOL_CONFIG_DEFAULT.color });
+  const [elementsLibraryModalOpen, setElementsLibraryModalOpen] = useState(false);
+  const [editingCustomElementId, setEditingCustomElementId] = useState<number | null>(null);
+  const [customElementDraft, setCustomElementDraft] = useState<CustomElementDraft>({ element_name: '', description: '', required_curing_days: '', geometry_type: 'area' });
+  const [inlineCreateElement, setInlineCreateElement] = useState(false);
+  const [inlineElementDraft, setInlineElementDraft] = useState<CustomElementDraft>({ element_name: '', description: '', required_curing_days: '', geometry_type: 'area' });
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const planRootRef = useRef<HTMLDivElement>(null);
@@ -406,6 +418,11 @@ export default function Plans() {
   const appliedCalibration = resolveCalibrationForPage(pages, activePageId);
   const calibratedLineStroke = calibratedPixels(appliedCalibration, { ft: 1.5, in: 18, m: 0.45, mm: 460 });
   const calibratedPointSize = calibratedPixels(appliedCalibration, { ft: 2, in: 24, m: 0.62, mm: 620 });
+  const allowedGeometryType = activeTool === 'line' ? 'line' : activeTool === 'point' ? 'point' : 'area';
+  const elementTypeOptions = curingRules
+    .filter((rule) => rule.is_active && (rule.geometry_type || '').trim().toLowerCase() === allowedGeometryType)
+    .map((rule) => rule.element_name)
+    .filter((value, index, array) => !!value && array.indexOf(value) === index);
 
   const tools = [
     { id: 'select' as const, icon: MousePointer2, label: 'Selection' },
@@ -416,6 +433,53 @@ export default function Plans() {
     { id: 'line' as const, icon: Slash, label: 'Line' },
     { id: 'point' as const, icon: MapPin, label: 'Point' },
   ];
+
+  const geometryTypeForTool = (tool: ToolId) => (tool === 'line' ? 'line' : tool === 'point' ? 'point' : 'area');
+
+  const refreshCustomElements = async () => {
+    try {
+      const rules = await libraryService.getRules();
+      setCuringRules(rules || []);
+      return rules || [];
+    } catch (error) {
+      console.error('Failed to load curing rules', error);
+      return [];
+    }
+  };
+
+  const resetInlineElementDraft = (geometryType: string) => {
+    setInlineElementDraft({ element_name: '', description: '', required_curing_days: '', geometry_type: geometryType });
+  };
+
+  const handleSaveCustomElement = async (draft: CustomElementDraft) => {
+    if (!draft.element_name.trim() || !/^\d+$/.test(draft.required_curing_days)) {
+      alert('Element name and curing period are required. Curing period must be digits only.');
+      return null;
+    }
+    const payload = {
+      element_name: draft.element_name.trim(),
+      description: draft.description.trim(),
+      required_curing_days: parseInt(draft.required_curing_days, 10),
+      geometry_type: draft.geometry_type,
+      is_active: true,
+    };
+    const saved = draft.id
+      ? await libraryService.updateRule(draft.id, payload)
+      : await libraryService.createRule(payload);
+    const nextRules = await refreshCustomElements();
+    return { saved, nextRules };
+  };
+
+  const handleDeleteCustomElement = async (ruleId: number) => {
+    await libraryService.deleteRule(ruleId);
+    await refreshCustomElements();
+  };
+
+  const handleOpenElementsLibrary = () => {
+    setEditingCustomElementId(null);
+    setCustomElementDraft({ element_name: '', description: '', required_curing_days: '', geometry_type: 'area' });
+    setElementsLibraryModalOpen(true);
+  };
 
   const persistAnnotations = async (pageId: string, annotations: Annotation[]) => {
     if (!activeDrawingId || !pageId) return;
@@ -471,6 +535,18 @@ export default function Plans() {
   };
 
   const openToolConfig = (tool: ToolId) => {
+    const geometryType = geometryTypeForTool(tool);
+    const nextOptions = curingRules
+      .filter((rule) => rule.is_active && (rule.geometry_type || '').trim().toLowerCase() === geometryType)
+      .map((rule) => rule.element_name)
+      .filter((value, index, array) => !!value && array.indexOf(value) === index);
+    const fallbackElementType = nextOptions[0] || '';
+    setToolConfigDraft((current) => ({
+      ...current,
+      elementType: nextOptions.includes(current.elementType) ? current.elementType : fallbackElementType,
+    }));
+    setInlineCreateElement(false);
+    resetInlineElementDraft(geometryType);
     setActiveTool(tool);
     setDrawingSession(null);
     setSelectionBox(null);
@@ -650,16 +726,7 @@ export default function Plans() {
   }, [currentUserId, requestedDrawingId]);
 
   useEffect(() => {
-    const loadRules = async () => {
-      try {
-        const rules = await libraryService.getRules();
-        setCuringRules(rules || []);
-      } catch (error) {
-        console.error('Failed to load curing rules', error);
-      }
-    };
-
-    void loadRules();
+    void refreshCustomElements();
   }, []);
 
   useEffect(() => {
@@ -1964,6 +2031,14 @@ export default function Plans() {
           </div>
           <div className="mt-5 flex items-center gap-2">
             <button
+              onClick={handleOpenElementsLibrary}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black uppercase tracking-[0.16em] text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-900"
+              type="button"
+            >
+              <Plus className="h-4 w-4" />
+              Elements
+            </button>
+            <button
               onClick={handleToggleSelectAll}
               className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black uppercase tracking-[0.16em] text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-900"
               type="button"
@@ -2276,14 +2351,76 @@ export default function Plans() {
 
             <div className="space-y-4">
               <div>
-                <label className="mb-2 block text-xs font-black uppercase tracking-widest text-slate-500">Element Type</label>
-                <select
-                  value={toolConfigDraft.elementType}
-                  onChange={(e) => setToolConfigDraft((current) => ({ ...current, elementType: e.target.value }))}
-                  className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-500"
-                >
-                  {ELEMENT_TYPE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
-                </select>
+                <div className="mb-2 flex items-center justify-between">
+                  <label className="block text-xs font-black uppercase tracking-widest text-slate-500">Element Type</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInlineCreateElement(true);
+                      resetInlineElementDraft(geometryTypeForTool(activeTool));
+                    }}
+                    className="inline-flex items-center gap-1 text-xs font-black uppercase tracking-widest text-blue-600 hover:text-blue-700"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Create Element
+                  </button>
+                </div>
+                {!inlineCreateElement ? (
+                  <select
+                    value={toolConfigDraft.elementType}
+                    onChange={(e) => setToolConfigDraft((current) => ({ ...current, elementType: e.target.value }))}
+                    className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-500"
+                  >
+                    {elementTypeOptions.length > 0
+                      ? elementTypeOptions.map((option) => <option key={option} value={option}>{option}</option>)
+                      : <option value="">No element types configured</option>}
+                  </select>
+                ) : (
+                  <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                    <input
+                      value={inlineElementDraft.element_name}
+                      onChange={(e) => setInlineElementDraft((current) => ({ ...current, element_name: e.target.value }))}
+                      className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-500"
+                      placeholder="Element type name"
+                    />
+                    <input
+                      value={inlineElementDraft.description}
+                      onChange={(e) => setInlineElementDraft((current) => ({ ...current, description: e.target.value }))}
+                      className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-500"
+                      placeholder="Description"
+                    />
+                    <input
+                      value={inlineElementDraft.required_curing_days}
+                      onChange={(e) => setInlineElementDraft((current) => ({ ...current, required_curing_days: e.target.value.replace(/\D/g, '') }))}
+                      className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-500"
+                      placeholder="Curing period (days)"
+                    />
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setInlineCreateElement(false)}
+                        className="rounded-2xl border border-slate-300 px-3 py-2 text-xs font-black text-slate-600 hover:bg-slate-100"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void handleSaveCustomElement({ ...inlineElementDraft, geometry_type: geometryTypeForTool(activeTool) }).then((result) => {
+                            if (!result) return;
+                            const createdName = result.saved?.element_name || inlineElementDraft.element_name.trim();
+                            setToolConfigDraft((current) => ({ ...current, elementType: createdName }));
+                            setInlineCreateElement(false);
+                            resetInlineElementDraft(geometryTypeForTool(activeTool));
+                          });
+                        }}
+                        className="rounded-2xl bg-slate-900 px-3 py-2 text-xs font-black text-white hover:bg-slate-800"
+                      >
+                        OK
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -2472,6 +2609,117 @@ export default function Plans() {
               >
                 Save
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {elementsLibraryModalOpen && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/25">
+          <div className="w-full max-w-5xl rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
+            <div className="mb-5 flex items-center justify-between">
+              <div>
+                <h3 className="text-xl font-black text-slate-900">Elements</h3>
+                <p className="mt-1 text-sm font-medium text-slate-500">Manage your own element types for this monitor account.</p>
+              </div>
+              <button onClick={() => setElementsLibraryModalOpen(false)} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="mb-5 grid grid-cols-1 gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-[1.2fr_0.8fr_0.7fr_0.7fr_auto]">
+              <input
+                value={customElementDraft.element_name}
+                onChange={(e) => setCustomElementDraft((current) => ({ ...current, element_name: e.target.value }))}
+                className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-500"
+                placeholder="Element type name"
+              />
+              <input
+                value={customElementDraft.description}
+                onChange={(e) => setCustomElementDraft((current) => ({ ...current, description: e.target.value }))}
+                className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-500"
+                placeholder="Description"
+              />
+              <input
+                value={customElementDraft.required_curing_days}
+                onChange={(e) => setCustomElementDraft((current) => ({ ...current, required_curing_days: e.target.value.replace(/\D/g, '') }))}
+                className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-500"
+                placeholder="Days"
+              />
+              <select
+                value={customElementDraft.geometry_type}
+                onChange={(e) => setCustomElementDraft((current) => ({ ...current, geometry_type: e.target.value }))}
+                className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-500"
+              >
+                <option value="area">Area</option>
+                <option value="line">Line</option>
+                <option value="point">Point</option>
+              </select>
+              <button
+                type="button"
+                onClick={() => { void handleSaveCustomElement(customElementDraft).then(() => { setEditingCustomElementId(null); setCustomElementDraft({ element_name: '', description: '', required_curing_days: '', geometry_type: 'area' }); }); }}
+                className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-black text-white hover:bg-slate-800"
+              >
+                {editingCustomElementId ? 'Save' : 'Add'}
+              </button>
+            </div>
+
+            <div className="overflow-hidden rounded-2xl border border-slate-200">
+              <table className="w-full border-collapse text-left">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50">
+                    <th className="p-4 text-[11px] font-black uppercase tracking-widest text-slate-400">Element Type</th>
+                    <th className="p-4 text-[11px] font-black uppercase tracking-widest text-slate-400">Description</th>
+                    <th className="p-4 text-[11px] font-black uppercase tracking-widest text-slate-400">Days</th>
+                    <th className="p-4 text-[11px] font-black uppercase tracking-widest text-slate-400">Geometry</th>
+                    <th className="p-4 text-right text-[11px] font-black uppercase tracking-widest text-slate-400">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {curingRules.map((rule) => (
+                    <tr key={rule.id} className="hover:bg-slate-50/60">
+                      <td className="p-4 text-sm font-black text-slate-900">{rule.element_name}</td>
+                      <td className="p-4 text-sm font-medium text-slate-500">{rule.description || '-'}</td>
+                      <td className="p-4 text-sm font-black text-slate-700">{rule.required_curing_days}</td>
+                      <td className="p-4 text-sm font-bold uppercase tracking-widest text-slate-500">{rule.geometry_type}</td>
+                      <td className="p-4">
+                        <div className="flex justify-end gap-2">
+                          <button
+                            type="button"
+                            title="Edit element"
+                            onClick={() => {
+                              setEditingCustomElementId(rule.id);
+                              setCustomElementDraft({
+                                id: rule.id,
+                                element_name: rule.element_name,
+                                description: rule.description || '',
+                                required_curing_days: String(rule.required_curing_days),
+                                geometry_type: rule.geometry_type,
+                              });
+                            }}
+                            className="rounded-xl border border-slate-200 p-2 text-slate-500 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800"
+                          >
+                            <PenSquare className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            title="Delete element"
+                            onClick={() => { void handleDeleteCustomElement(rule.id); }}
+                            className="rounded-xl border border-slate-200 p-2 text-slate-500 hover:border-red-300 hover:bg-red-50 hover:text-red-600"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {curingRules.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="p-8 text-center text-sm font-medium italic text-slate-400">No active elements configured.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>

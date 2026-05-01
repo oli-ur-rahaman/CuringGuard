@@ -3,11 +3,25 @@ from sqlalchemy.sql import func
 from backend.app.core.database import Base
 import enum
 
-class CuringRule(Base):
-    __tablename__ = "curing_rules"
+class DefaultElement(Base):
+    __tablename__ = "default_elements"
 
     id = Column(Integer, primary_key=True, index=True)
     element_name = Column(String(255), unique=True, index=True, nullable=False)
+    geometry_type = Column(String(255), nullable=False)
+    required_curing_days = Column(Integer, nullable=False)
+    description = Column(String(1000), nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
+class CustomElement(Base):
+    __tablename__ = "custom_elements"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    element_name = Column(String(255), nullable=False, index=True)
     geometry_type = Column(String(255), nullable=False)
     required_curing_days = Column(Integer, nullable=False)
     description = Column(String(1000), nullable=True)
@@ -54,3 +68,28 @@ class DrawingElement(Base):
     coordinates_json = Column(String(10000), nullable=False)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
+class CuringProgressEntry(Base):
+    __tablename__ = "curing_progress_entries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    drawing_element_id = Column(String(255), ForeignKey("drawing_elements.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    progress_date = Column(Date, nullable=False, index=True)
+    did_cure_today = Column(Boolean, nullable=False)
+    remark = Column(String(2000), nullable=True)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
+class CuringProgressMedia(Base):
+    __tablename__ = "curing_progress_media"
+
+    id = Column(Integer, primary_key=True, index=True)
+    progress_entry_id = Column(Integer, ForeignKey("curing_progress_entries.id"), nullable=False, index=True)
+    file_path = Column(String(500), nullable=False)
+    file_type = Column(String(32), nullable=False)
+    mime_type = Column(String(255), nullable=True)
+    duration_seconds = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=func.now())

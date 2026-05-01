@@ -35,7 +35,7 @@ app.add_middleware(
 )
 
 from backend.app.core.database import engine, Base
-from backend.app.routers import auth, hierarchy, users, curing, library, gateways
+from backend.app.routers import auth, hierarchy, users, curing, library, gateways, progress
 
 # Initialize all database tables
 Base.metadata.create_all(bind=engine)
@@ -71,6 +71,14 @@ def ensure_runtime_schema():
         user_columns = {column["name"] for column in inspector.get_columns("users")}
     except Exception:
         user_columns = set()
+    try:
+        default_element_columns = {column["name"] for column in inspector.get_columns("default_elements")}
+    except Exception:
+        default_element_columns = set()
+    try:
+        custom_element_columns = {column["name"] for column in inspector.get_columns("custom_elements")}
+    except Exception:
+        custom_element_columns = set()
 
     if "asset_kind" not in drawing_columns:
         with engine.begin() as connection:
@@ -110,6 +118,63 @@ def ensure_runtime_schema():
         table_names = set(inspector.get_table_names())
     except Exception:
         table_names = set()
+
+    if "default_elements" not in table_names:
+        with engine.begin() as connection:
+            connection.execute(text("""
+                CREATE TABLE default_elements (
+                    id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                    element_name VARCHAR(255) NOT NULL,
+                    geometry_type VARCHAR(255) NOT NULL,
+                    required_curing_days INTEGER NOT NULL,
+                    description VARCHAR(1000) NULL,
+                    is_active BOOLEAN DEFAULT TRUE,
+                    created_at DATETIME NULL,
+                    updated_at DATETIME NULL
+                )
+            """))
+        table_names.add("default_elements")
+
+    if "curing_rules" in table_names:
+        with engine.begin() as connection:
+            connection.execute(text("""
+                INSERT INTO default_elements (element_name, geometry_type, required_curing_days, description, is_active, created_at, updated_at)
+                SELECT cr.element_name, cr.geometry_type, cr.required_curing_days, cr.description, cr.is_active, cr.created_at, cr.updated_at
+                FROM curing_rules cr
+                LEFT JOIN default_elements de ON de.element_name = cr.element_name
+                WHERE de.id IS NULL
+            """))
+            connection.execute(text("DROP TABLE curing_rules"))
+        table_names.discard("curing_rules")
+
+    if "custom_elements" not in table_names:
+        with engine.begin() as connection:
+            connection.execute(text("""
+                CREATE TABLE custom_elements (
+                    id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                    user_id INTEGER NOT NULL,
+                    element_name VARCHAR(255) NOT NULL,
+                    geometry_type VARCHAR(255) NOT NULL,
+                    required_curing_days INTEGER NOT NULL,
+                    description VARCHAR(1000) NULL,
+                    is_active BOOLEAN DEFAULT TRUE,
+                    created_at DATETIME NULL,
+                    updated_at DATETIME NULL
+                )
+            """))
+        table_names.add("custom_elements")
+
+    if "custom_elements" in table_names and "default_elements" in table_names:
+        with engine.begin() as connection:
+            monitor_rows = connection.execute(text("SELECT id FROM users WHERE role = 'MONITOR' OR role = 'monitor'")).mappings().all()
+            for row in monitor_rows:
+                connection.execute(text("""
+                    INSERT INTO custom_elements (user_id, element_name, geometry_type, required_curing_days, description, is_active, created_at, updated_at)
+                    SELECT :user_id, de.element_name, de.geometry_type, de.required_curing_days, de.description, de.is_active, de.created_at, de.updated_at
+                    FROM default_elements de
+                    LEFT JOIN custom_elements ce ON ce.user_id = :user_id AND ce.element_name = de.element_name AND ce.geometry_type = de.geometry_type
+                    WHERE ce.id IS NULL
+                """), {"user_id": row["id"]})
 
     legacy_calibration_columns = [
         "calibration_x1",
@@ -235,6 +300,7 @@ app.include_router(users.router)
 app.include_router(curing.router)
 app.include_router(library.router)
 app.include_router(gateways.router)
+app.include_router(progress.router)
 
 @app.get("/")
 def health_check():
