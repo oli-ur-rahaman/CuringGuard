@@ -30,17 +30,6 @@ export default function Dashboard() {
     fetchData();
   }, []);
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="w-12 h-12 text-blue-600 animate-spin" />
-          <p className="text-slate-500 font-medium">Loading Field Data...</p>
-        </div>
-      </div>
-    );
-  }
-
   const now = new Date();
   
   const activeCuring = elements.filter(el => 
@@ -61,6 +50,17 @@ export default function Dashboard() {
     () => contractors.find((contractor) => contractor.id === selectedContractorId) || null,
     [contractors, selectedContractorId]
   );
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="w-12 h-12 text-blue-600 animate-spin" />
+          <p className="text-slate-500 font-medium">Loading Field Data...</p>
+        </div>
+      </div>
+    );
+  }
 
   const handlePing = async (contractorId: number, elementId: string) => {
     try {
