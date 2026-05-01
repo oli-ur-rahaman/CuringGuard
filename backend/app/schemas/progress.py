@@ -6,9 +6,13 @@ from typing import List, Optional
 class ProgressMediaResponse(BaseModel):
     id: int
     file_path: str
+    source_type: Optional[str] = None
     file_type: str
     mime_type: Optional[str] = None
     duration_seconds: Optional[int] = None
+    captured_at: Optional[datetime] = None
+    capture_latitude: Optional[str] = None
+    capture_longitude: Optional[str] = None
     created_at: Optional[datetime] = None
 
     class Config:

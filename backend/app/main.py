@@ -35,7 +35,7 @@ app.add_middleware(
 )
 
 from backend.app.core.database import engine, Base
-from backend.app.routers import auth, hierarchy, users, curing, library, gateways, progress
+from backend.app.routers import auth, hierarchy, users, curing, library, gateways, progress, system
 
 # Initialize all database tables
 Base.metadata.create_all(bind=engine)
@@ -79,6 +79,10 @@ def ensure_runtime_schema():
         custom_element_columns = {column["name"] for column in inspector.get_columns("custom_elements")}
     except Exception:
         custom_element_columns = set()
+    try:
+        progress_media_columns = {column["name"] for column in inspector.get_columns("curing_progress_media")}
+    except Exception:
+        progress_media_columns = set()
 
     if "asset_kind" not in drawing_columns:
         with engine.begin() as connection:
@@ -279,6 +283,35 @@ def ensure_runtime_schema():
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE drawing_elements ADD COLUMN point_shape VARCHAR(32) NULL"))
 
+    if "system_settings" in table_names:
+        with engine.begin() as connection:
+            row = connection.execute(
+                text("SELECT id FROM system_settings WHERE setting_key = 'manual_file_entry' ORDER BY id ASC LIMIT 1")
+            ).mappings().first()
+            if not row:
+                connection.execute(
+                    text("""
+                        INSERT INTO system_settings (setting_key, setting_value, category, description)
+                        VALUES ('manual_file_entry', 'yes', 'progress', 'Allow manual photo and video upload in curing progress')
+                    """)
+                )
+
+    if "source_type" not in progress_media_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE curing_progress_media ADD COLUMN source_type VARCHAR(32) NULL"))
+
+    if "captured_at" not in progress_media_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE curing_progress_media ADD COLUMN captured_at DATETIME NULL"))
+
+    if "capture_latitude" not in progress_media_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE curing_progress_media ADD COLUMN capture_latitude VARCHAR(64) NULL"))
+
+    if "capture_longitude" not in progress_media_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE curing_progress_media ADD COLUMN capture_longitude VARCHAR(64) NULL"))
+
     if "curing_start_date" not in drawing_element_columns:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE drawing_elements ADD COLUMN curing_start_date DATE NULL"))
@@ -301,6 +334,7 @@ app.include_router(curing.router)
 app.include_router(library.router)
 app.include_router(gateways.router)
 app.include_router(progress.router)
+app.include_router(system.router)
 
 @app.get("/")
 def health_check():

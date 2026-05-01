@@ -1,12 +1,29 @@
 import React, { useState } from 'react';
 import { Settings as SettingsIcon, KeyRound, Loader2 } from 'lucide-react';
-import { userService } from '../services/api';
+import { authService, systemService, userService } from '../services/api';
 
 export default function Settings() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [settingsLoading, setSettingsLoading] = useState(false);
   const [message, setMessage] = useState({ text: '', type: '' });
+  const [manualFileEntryEnabled, setManualFileEntryEnabled] = useState(true);
+  const currentUser = authService.getCurrentUser();
+  const isSuperadmin = currentUser?.role === 'superadmin';
+
+  React.useEffect(() => {
+    if (!isSuperadmin) return;
+    const loadSystemSettings = async () => {
+      try {
+        const response = await systemService.getSettings();
+        setManualFileEntryEnabled(!!response.manual_file_entry_enabled);
+      } catch {
+        // Keep current value on load failure.
+      }
+    };
+    void loadSystemSettings();
+  }, [isSuperadmin]);
 
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,6 +59,20 @@ export default function Settings() {
       setMessage({ text: err.response?.data?.detail || "Failed to update password.", type: "error" });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleManualFileEntryToggle = async () => {
+    try {
+      setSettingsLoading(true);
+      const nextValue = !manualFileEntryEnabled;
+      const response = await systemService.updateSettings({ manual_file_entry_enabled: nextValue });
+      setManualFileEntryEnabled(!!response.manual_file_entry_enabled);
+      setMessage({ text: 'System setting updated successfully.', type: 'success' });
+    } catch (err: any) {
+      setMessage({ text: err.response?.data?.detail || 'Failed to update system setting.', type: 'error' });
+    } finally {
+      setSettingsLoading(false);
     }
   };
 
@@ -97,6 +128,28 @@ export default function Settings() {
           </button>
         </form>
       </div>
+
+      {isSuperadmin && (
+        <div className="mt-6 bg-white border border-slate-200 rounded-3xl p-6 md:p-10 shadow-sm max-w-2xl">
+          <h2 className="text-xl font-extrabold text-slate-900 mb-6">Progress Upload Control</h2>
+          <div className="flex items-center justify-between gap-6 rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4">
+            <div>
+              <div className="text-sm font-extrabold text-slate-900">Manual File Entry</div>
+              <p className="mt-1 text-sm font-medium text-slate-500">
+                Turn manual photo/video upload on or off in the curing progress modal.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => { void handleManualFileEntryToggle(); }}
+              disabled={settingsLoading}
+              className={`inline-flex min-w-[92px] items-center justify-center rounded-full px-4 py-2 text-sm font-black transition-colors ${manualFileEntryEnabled ? 'bg-emerald-600 text-white hover:bg-emerald-500' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'} disabled:cursor-not-allowed disabled:opacity-50`}
+            >
+              {settingsLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : manualFileEntryEnabled ? 'ON' : 'OFF'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

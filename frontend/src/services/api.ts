@@ -380,4 +380,15 @@ export const progressService = {
   },
 };
 
+export const systemService = {
+  getSettings: async () => {
+    const response = await api.get('/system/settings');
+    return response.data as { manual_file_entry_enabled: boolean; updated_at?: string | null };
+  },
+  updateSettings: async (data: { manual_file_entry_enabled: boolean }) => {
+    const response = await api.patch('/system/settings', data);
+    return response.data as { manual_file_entry_enabled: boolean; updated_at?: string | null };
+  },
+};
+
 export default api;

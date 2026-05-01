@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { CalendarRange, Camera, Loader2, Plus, Presentation, Upload, Video, X } from 'lucide-react';
-import { progressService } from '../services/api';
+import { progressService, systemService } from '../services/api';
 
 type GanttDay = {
   date: string;
@@ -28,6 +28,15 @@ type ProgressStructureGroup = {
   rows: ProgressRow[];
 };
 
+type ProgressMediaItem = {
+  file: File;
+  source: 'manual' | 'camera-photo' | 'camera-video';
+  capturedAt?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+};
+
+const ALLOWED_IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/bmp', 'image/gif'];
 const formatShortDate = (value: string) => {
   const parsed = new Date(`${value}T00:00:00`);
   if (Number.isNaN(parsed.getTime())) return value;
@@ -38,6 +47,12 @@ const isoToday = () => new Date().toISOString().slice(0, 10);
 
 async function validateMediaFiles(files: File[]) {
   for (const file of files) {
+    if (file.type.startsWith('image/')) {
+      if (!ALLOWED_IMAGE_MIME_TYPES.includes(file.type)) {
+        throw new Error(`Unsupported image format for "${file.name}". Use JPG, PNG, WEBP, BMP, or GIF.`);
+      }
+      continue;
+    }
     if (file.type.startsWith('video/')) {
       const duration = await new Promise<number>((resolve, reject) => {
         const video = document.createElement('video');
@@ -57,7 +72,9 @@ async function validateMediaFiles(files: File[]) {
       if (duration > 120) {
         throw new Error(`Video "${file.name}" is longer than 2 minutes.`);
       }
+      continue;
     }
+    throw new Error(`Unsupported file type for "${file.name}". Only image and video files are allowed.`);
   }
 }
 
@@ -111,7 +128,8 @@ export default function CuringProgress() {
   const [activeRow, setActiveRow] = useState<ProgressRow | null>(null);
   const [didCureToday, setDidCureToday] = useState<'yes' | 'no'>('yes');
   const [remark, setRemark] = useState('');
-  const [mediaFiles, setMediaFiles] = useState<File[]>([]);
+  const [mediaFiles, setMediaFiles] = useState<ProgressMediaItem[]>([]);
+  const [manualFileEntryEnabled, setManualFileEntryEnabled] = useState(true);
   const [cameraModalOpen, setCameraModalOpen] = useState(false);
   const [cameraMode, setCameraMode] = useState<'photo' | 'video'>('photo');
   const [cameraError, setCameraError] = useState('');
@@ -127,8 +145,12 @@ export default function CuringProgress() {
   const loadRows = async () => {
     try {
       setLoading(true);
-      const response = await progressService.getRows();
+      const [response, settingsResponse] = await Promise.all([
+        progressService.getRows(),
+        systemService.getSettings(),
+      ]);
       setGroups(response.structures || []);
+      setManualFileEntryEnabled(!!settingsResponse.manual_file_entry_enabled);
     } catch (error: any) {
       alert(error.response?.data?.detail || 'Failed to load curing progress.');
     } finally {
@@ -194,6 +216,26 @@ export default function CuringProgress() {
     void startCamera();
   }, [cameraModalOpen, cameraMode]);
 
+  const getCurrentCaptureLocation = async () => {
+    if (!navigator.geolocation) {
+      return { latitude: null, longitude: null };
+    }
+    return new Promise<{ latitude: number | null; longitude: number | null }>((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          resolve({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+          });
+        },
+        () => {
+          resolve({ latitude: null, longitude: null });
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
+      );
+    });
+  };
+
   const openProgressModal = (row: ProgressRow) => {
     setActiveRow(row);
     setDidCureToday('yes');
@@ -206,7 +248,16 @@ export default function CuringProgress() {
     const incoming = Array.from(files);
     try {
       await validateMediaFiles(incoming);
-      setMediaFiles((current) => [...current, ...incoming]);
+      setMediaFiles((current) => [
+        ...current,
+        ...incoming.map((file) => ({
+          file,
+          source: 'manual' as const,
+          capturedAt: null,
+          latitude: null,
+          longitude: null,
+        })),
+      ]);
     } catch (error: any) {
       alert(error.message || 'Invalid media file.');
     }
@@ -246,8 +297,19 @@ export default function CuringProgress() {
       return;
     }
 
+    const location = await getCurrentCaptureLocation();
+    const capturedAt = new Date().toISOString();
     const file = new File([blob], `camera-photo-${Date.now()}.jpg`, { type: 'image/jpeg' });
-    setMediaFiles((current) => [...current, file]);
+    setMediaFiles((current) => [
+      ...current,
+      {
+        file,
+        source: 'camera-photo',
+        capturedAt,
+        latitude: location.latitude,
+        longitude: location.longitude,
+      },
+    ]);
     discardCameraResultRef.current = true;
     closeCameraModal();
   };
@@ -276,6 +338,8 @@ export default function CuringProgress() {
 
     try {
       mediaChunksRef.current = [];
+      const location = await getCurrentCaptureLocation();
+      const capturedAt = new Date().toISOString();
       const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
       mediaRecorderRef.current = recorder;
       recorder.ondataavailable = (event) => {
@@ -292,7 +356,16 @@ export default function CuringProgress() {
           const blob = new Blob(mediaChunksRef.current, { type: recorder.mimeType || 'video/webm' });
           const file = new File([blob], `camera-video-${Date.now()}.webm`, { type: blob.type || 'video/webm' });
           await validateMediaFiles([file]);
-          setMediaFiles((current) => [...current, file]);
+          setMediaFiles((current) => [
+            ...current,
+            {
+              file,
+              source: 'camera-video',
+              capturedAt,
+              latitude: location.latitude,
+              longitude: location.longitude,
+            },
+          ]);
           discardCameraResultRef.current = true;
           closeCameraModal();
         } catch (error: any) {
@@ -315,7 +388,14 @@ export default function CuringProgress() {
     formData.append('progress_date', isoToday());
     formData.append('did_cure_today', didCureToday);
     formData.append('remark', remark);
-    mediaFiles.forEach((file) => formData.append('files', file));
+    formData.append('media_metadata_json', JSON.stringify(mediaFiles.map((item) => ({
+      name: item.file.name,
+      source: item.source,
+      capturedAt: item.capturedAt ?? null,
+      latitude: item.latitude ?? null,
+      longitude: item.longitude ?? null,
+    }))));
+    mediaFiles.forEach((item) => formData.append('files', item.file));
 
     try {
       setSubmitting(true);
@@ -457,22 +537,26 @@ export default function CuringProgress() {
               <div>
                 <label className="mb-2 block text-[11px] font-black uppercase tracking-widest text-slate-500">Evidence</label>
                 <div className="flex flex-wrap gap-3">
-                  <input
-                    ref={uploadInputRef}
-                    type="file"
-                    accept="image/*,video/*"
-                    multiple
-                    className="hidden"
-                    onChange={(e) => { void appendFiles(e.target.files); e.currentTarget.value = ''; }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => uploadInputRef.current?.click()}
-                    className="inline-flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-black text-slate-700 hover:bg-slate-50"
-                  >
-                    <Upload className="h-4 w-4 text-blue-500" />
-                    Upload Photo / Video
-                  </button>
+                  {manualFileEntryEnabled && (
+                    <>
+                      <input
+                        ref={uploadInputRef}
+                        type="file"
+                        accept=".jpg,.jpeg,.png,.webp,.bmp,.gif,.mp4,.webm,.mov,.avi,image/jpeg,image/png,image/webp,image/bmp,image/gif,video/mp4,video/webm,video/quicktime,video/x-msvideo"
+                        multiple
+                        className="hidden"
+                        onChange={(e) => { void appendFiles(e.target.files); e.currentTarget.value = ''; }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => uploadInputRef.current?.click()}
+                        className="inline-flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-black text-slate-700 hover:bg-slate-50"
+                      >
+                        <Upload className="h-4 w-4 text-blue-500" />
+                        Upload Photo / Video
+                      </button>
+                    </>
+                  )}
                   <button
                     type="button"
                     onClick={() => openCameraCapture('photo')}
@@ -493,8 +577,11 @@ export default function CuringProgress() {
                 <p className="mt-2 text-xs font-medium text-slate-400">Multiple files allowed. Videos must be 2 minutes or shorter.</p>
                 {mediaFiles.length > 0 && (
                   <div className="mt-3 space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                    {mediaFiles.map((file, index) => (
-                      <div key={`${file.name}-${index}`} className="text-sm font-bold text-slate-600">{file.name}</div>
+                    {mediaFiles.map((item, index) => (
+                      <div key={`${item.file.name}-${index}`} className="text-sm font-bold text-slate-600">
+                        {item.file.name}
+                        {item.capturedAt && <span className="ml-2 text-xs font-semibold text-slate-400">captured {new Date(item.capturedAt).toLocaleString()}</span>}
+                      </div>
                     ))}
                   </div>
                 )}
