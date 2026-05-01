@@ -86,25 +86,37 @@ def _assert_can_submit_progress(db: Session, current_user: User, drawing_element
 
 
 def _get_system_setting(db: Session):
-    row = db.execute(
+    rows = db.execute(
         text("""
-            SELECT setting_value
+            SELECT setting_key, setting_value
             FROM system_settings
-            WHERE setting_key = 'manual_file_entry'
-            ORDER BY id ASC
-            LIMIT 1
+            WHERE setting_key IN ('manual_file_entry', 'server_time_offset_hours')
         """)
-    ).mappings().first()
-    if row:
-        return {"manual_file_entry_enabled": str(row["setting_value"]).lower() != "no"}
-    db.execute(
-        text("""
-            INSERT INTO system_settings (setting_key, setting_value, category, description)
-            VALUES ('manual_file_entry', 'yes', 'progress', 'Allow manual photo and video upload in curing progress')
-        """)
-    )
+    ).mappings().all()
+    by_key = {row["setting_key"]: row["setting_value"] for row in rows}
+
+    if "manual_file_entry" not in by_key:
+        db.execute(
+            text("""
+                INSERT INTO system_settings (setting_key, setting_value, category, description)
+                VALUES ('manual_file_entry', 'yes', 'progress', 'Allow manual photo and video upload in curing progress')
+            """)
+        )
+        by_key["manual_file_entry"] = "yes"
+    if "server_time_offset_hours" not in by_key:
+        db.execute(
+            text("""
+                INSERT INTO system_settings (setting_key, setting_value, category, description)
+                VALUES ('server_time_offset_hours', '0', 'progress', 'Hour offset to apply on top of server UTC time when capture time falls back to server time')
+            """)
+        )
+        by_key["server_time_offset_hours"] = "0"
     db.commit()
-    return {"manual_file_entry_enabled": True}
+
+    return {
+        "manual_file_entry_enabled": str(by_key["manual_file_entry"]).lower() != "no",
+        "server_time_offset_hours": int(by_key["server_time_offset_hours"] or 0),
+    }
 
 
 @router.get("/rows")

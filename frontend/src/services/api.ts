@@ -383,11 +383,21 @@ export const progressService = {
 export const systemService = {
   getSettings: async () => {
     const response = await api.get('/system/settings');
-    return response.data as { manual_file_entry_enabled: boolean; updated_at?: string | null };
+    return response.data as {
+      manual_file_entry_enabled: boolean;
+      server_time_offset_hours: number;
+      server_now_utc: string;
+      updated_at?: string | null;
+    };
   },
-  updateSettings: async (data: { manual_file_entry_enabled: boolean }) => {
+  updateSettings: async (data: { manual_file_entry_enabled?: boolean; server_time_offset_hours?: number }) => {
     const response = await api.patch('/system/settings', data);
-    return response.data as { manual_file_entry_enabled: boolean; updated_at?: string | null };
+    return response.data as {
+      manual_file_entry_enabled: boolean;
+      server_time_offset_hours: number;
+      server_now_utc: string;
+      updated_at?: string | null;
+    };
   },
 };
 

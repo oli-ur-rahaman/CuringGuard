@@ -3,7 +3,7 @@ import {
   Server, HardHat, Ban, Box, DatabaseZap, 
   Power, Settings2, ShieldBan, Plus, LogOut, ChevronRight, Menu, X, Search, Edit3, KeyRound
 } from 'lucide-react';
-import { authService, libraryService, userService } from '../services/api';
+import { authService, libraryService, systemService, userService } from '../services/api';
 import logoFinal from '../assets/logo_final.png';
 
 export default function Superadmin() {
@@ -15,6 +15,8 @@ export default function Superadmin() {
   const [elements, setElements] = useState<any[]>([]);
   const [globalContractors] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [systemSettings, setSystemSettings] = useState({ manual_file_entry_enabled: true, server_time_offset_hours: 0 });
+  const [systemSaving, setSystemSaving] = useState(false);
 
   // Search & Filter States
   const [searchQuery, setSearchQuery] = useState('');
@@ -38,6 +40,12 @@ export default function Superadmin() {
       } else if (activeTab === 'elements') {
         const data = await libraryService.getRules();
         setElements(data);
+      } else if (activeTab === 'settings') {
+        const data = await systemService.getSettings();
+        setSystemSettings({
+          manual_file_entry_enabled: !!data.manual_file_entry_enabled,
+          server_time_offset_hours: Number(data.server_time_offset_hours || 0),
+        });
       }
     } catch (err) {
       console.error(`Failed to fetch ${activeTab}`, err);
@@ -184,10 +192,27 @@ export default function Superadmin() {
     }
   };
 
+  const saveSystemSettings = async () => {
+    try {
+      setSystemSaving(true);
+      const response = await systemService.updateSettings(systemSettings);
+      setSystemSettings({
+        manual_file_entry_enabled: !!response.manual_file_entry_enabled,
+        server_time_offset_hours: Number(response.server_time_offset_hours || 0),
+      });
+      alert('System settings updated successfully.');
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'Failed to update system settings.');
+    } finally {
+      setSystemSaving(false);
+    }
+  };
+
   const sidebarMenus = [
     { id: 'tenants', label: 'Monitor Admins', icon: Server, description: 'Manage office silos' },
     { id: 'elements', label: 'Physics Engine', icon: Settings2, description: 'Curing durations & constraints' },
     { id: 'contractors', label: 'IAM Global Override', icon: ShieldBan, description: 'Cross-tenant account locking' },
+    { id: 'settings', label: 'System Settings', icon: Settings2, description: 'Progress capture controls' },
   ];
 
   return (
@@ -433,6 +458,56 @@ export default function Superadmin() {
                          ))}
                       </tbody>
                    </table>
+                </div>
+             </div>
+          )}
+
+          {activeTab === 'settings' && (
+             <div className="p-6 md:p-10 max-w-[1200px] animate-in fade-in zoom-in-95 duration-300">
+                <div className="mb-8">
+                   <h2 className="text-2xl md:text-3xl font-extrabold text-slate-900 flex items-center gap-3 tracking-tight">
+                      <Settings2 className="w-8 h-8 text-blue-600" /> System Settings
+                   </h2>
+                   <p className="text-slate-500 font-medium mt-2">Control manual progress upload and fallback server time offset.</p>
+                </div>
+
+                <div className="max-w-3xl rounded-[2rem] border border-slate-200 bg-white p-8 shadow-sm space-y-8">
+                  <div className="flex items-center justify-between gap-6 rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4">
+                    <div>
+                      <div className="text-base font-extrabold text-slate-900">Manual File Entry</div>
+                      <p className="mt-1 text-sm font-medium text-slate-500">Show or hide manual photo/video upload in curing progress.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSystemSettings((current) => ({ ...current, manual_file_entry_enabled: !current.manual_file_entry_enabled }))}
+                      className={`inline-flex min-w-[92px] items-center justify-center rounded-full px-4 py-2 text-sm font-black transition-colors ${systemSettings.manual_file_entry_enabled ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-700'}`}
+                    >
+                      {systemSettings.manual_file_entry_enabled ? 'ON' : 'OFF'}
+                    </button>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-extrabold text-slate-500 uppercase tracking-widest mb-2.5">Server Time Offset Hours</label>
+                    <input
+                      type="number"
+                      step="1"
+                      value={systemSettings.server_time_offset_hours}
+                      onChange={(e) => setSystemSettings((current) => ({ ...current, server_time_offset_hours: Number(e.target.value || 0) }))}
+                      className="w-full max-w-sm border-2 border-slate-200 rounded-xl p-3.5 font-extrabold text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
+                    />
+                    <p className="mt-2 text-sm font-medium text-slate-500">Used only when capture time falls back to server time.</p>
+                  </div>
+
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => { void saveSystemSettings(); }}
+                      disabled={systemSaving}
+                      className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-black text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {systemSaving ? 'Saving...' : 'Save Settings'}
+                    </button>
+                  </div>
                 </div>
              </div>
           )}

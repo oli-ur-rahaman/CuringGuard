@@ -285,14 +285,24 @@ def ensure_runtime_schema():
 
     if "system_settings" in table_names:
         with engine.begin() as connection:
-            row = connection.execute(
+            manual_row = connection.execute(
                 text("SELECT id FROM system_settings WHERE setting_key = 'manual_file_entry' ORDER BY id ASC LIMIT 1")
             ).mappings().first()
-            if not row:
+            if not manual_row:
                 connection.execute(
                     text("""
                         INSERT INTO system_settings (setting_key, setting_value, category, description)
                         VALUES ('manual_file_entry', 'yes', 'progress', 'Allow manual photo and video upload in curing progress')
+                    """)
+                )
+            offset_row = connection.execute(
+                text("SELECT id FROM system_settings WHERE setting_key = 'server_time_offset_hours' ORDER BY id ASC LIMIT 1")
+            ).mappings().first()
+            if not offset_row:
+                connection.execute(
+                    text("""
+                        INSERT INTO system_settings (setting_key, setting_value, category, description)
+                        VALUES ('server_time_offset_hours', '0', 'progress', 'Hour offset to apply on top of server UTC time when capture time falls back to server time')
                     """)
                 )
 

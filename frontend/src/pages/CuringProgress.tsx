@@ -130,6 +130,8 @@ export default function CuringProgress() {
   const [remark, setRemark] = useState('');
   const [mediaFiles, setMediaFiles] = useState<ProgressMediaItem[]>([]);
   const [manualFileEntryEnabled, setManualFileEntryEnabled] = useState(true);
+  const [serverTimeOffsetHours, setServerTimeOffsetHours] = useState(0);
+  const [serverNowUtc, setServerNowUtc] = useState<string | null>(null);
   const [cameraModalOpen, setCameraModalOpen] = useState(false);
   const [cameraMode, setCameraMode] = useState<'photo' | 'video'>('photo');
   const [cameraError, setCameraError] = useState('');
@@ -151,6 +153,8 @@ export default function CuringProgress() {
       ]);
       setGroups(response.structures || []);
       setManualFileEntryEnabled(!!settingsResponse.manual_file_entry_enabled);
+      setServerTimeOffsetHours(Number(settingsResponse.server_time_offset_hours || 0));
+      setServerNowUtc(settingsResponse.server_now_utc || null);
     } catch (error: any) {
       alert(error.response?.data?.detail || 'Failed to load curing progress.');
     } finally {
@@ -218,22 +222,72 @@ export default function CuringProgress() {
 
   const getCurrentCaptureLocation = async () => {
     if (!navigator.geolocation) {
-      return { latitude: null, longitude: null };
+      return { latitude: null, longitude: null, timestamp: null };
     }
-    return new Promise<{ latitude: number | null; longitude: number | null }>((resolve) => {
+    return new Promise<{ latitude: number | null; longitude: number | null; timestamp: number | null }>((resolve) => {
       navigator.geolocation.getCurrentPosition(
         (position) => {
           resolve({
             latitude: position.coords.latitude,
             longitude: position.coords.longitude,
+            timestamp: position.timestamp,
           });
         },
         () => {
-          resolve({ latitude: null, longitude: null });
+          resolve({ latitude: null, longitude: null, timestamp: null });
         },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
       );
     });
+  };
+
+  const formatOffsetTimestamp = (baseUtcMs: number, offsetHours: number) => {
+    const shifted = new Date(baseUtcMs + offsetHours * 3600000);
+    const year = shifted.getUTCFullYear();
+    const month = String(shifted.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(shifted.getUTCDate()).padStart(2, '0');
+    const hours = String(shifted.getUTCHours()).padStart(2, '0');
+    const minutes = String(shifted.getUTCMinutes()).padStart(2, '0');
+    const seconds = String(shifted.getUTCSeconds()).padStart(2, '0');
+    const sign = offsetHours >= 0 ? '+' : '-';
+    const absHours = String(Math.abs(offsetHours)).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}${sign}${absHours}:00`;
+  };
+
+  const resolveFallbackTimestamp = () => {
+    const greenwichPlusSix = formatOffsetTimestamp(Date.now(), 6);
+    if (greenwichPlusSix) return greenwichPlusSix;
+
+    if (serverNowUtc) {
+      const parsedServerNow = Date.parse(serverNowUtc);
+      if (!Number.isNaN(parsedServerNow)) {
+        return formatOffsetTimestamp(parsedServerNow, serverTimeOffsetHours);
+      }
+    }
+
+    return new Date().toISOString();
+  };
+
+  const resolveMandatoryCaptureContext = async () => {
+    const location = await getCurrentCaptureLocation();
+    if (location.latitude == null || location.longitude == null) {
+      alert('Location access is required before taking photo or video. Turn on browser/site geolocation and try again.');
+      return null;
+    }
+    return {
+      latitude: location.latitude,
+      longitude: location.longitude,
+      capturedAt: location.timestamp ? formatOffsetTimestamp(location.timestamp, 6) : resolveFallbackTimestamp(),
+    };
+  };
+
+  const ensureLocationEnabledBeforeCapture = async () => {
+    const location = await getCurrentCaptureLocation();
+    if (location.latitude == null || location.longitude == null) {
+      alert('Please enable browser/site geolocation before taking photo or video, then try again.');
+      return false;
+    }
+    return true;
   };
 
   const openProgressModal = (row: ProgressRow) => {
@@ -263,7 +317,9 @@ export default function CuringProgress() {
     }
   };
 
-  const openCameraCapture = (mode: 'photo' | 'video') => {
+  const openCameraCapture = async (mode: 'photo' | 'video') => {
+    const allowed = await ensureLocationEnabledBeforeCapture();
+    if (!allowed) return;
     discardCameraResultRef.current = false;
     setCameraMode(mode);
     setCameraModalOpen(true);
@@ -297,17 +353,17 @@ export default function CuringProgress() {
       return;
     }
 
-    const location = await getCurrentCaptureLocation();
-    const capturedAt = new Date().toISOString();
+    const captureContext = await resolveMandatoryCaptureContext();
+    if (!captureContext) return;
     const file = new File([blob], `camera-photo-${Date.now()}.jpg`, { type: 'image/jpeg' });
     setMediaFiles((current) => [
       ...current,
       {
         file,
         source: 'camera-photo',
-        capturedAt,
-        latitude: location.latitude,
-        longitude: location.longitude,
+        capturedAt: captureContext.capturedAt,
+        latitude: captureContext.latitude,
+        longitude: captureContext.longitude,
       },
     ]);
     discardCameraResultRef.current = true;
@@ -338,8 +394,8 @@ export default function CuringProgress() {
 
     try {
       mediaChunksRef.current = [];
-      const location = await getCurrentCaptureLocation();
-      const capturedAt = new Date().toISOString();
+      const captureContext = await resolveMandatoryCaptureContext();
+      if (!captureContext) return;
       const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
       mediaRecorderRef.current = recorder;
       recorder.ondataavailable = (event) => {
@@ -361,9 +417,9 @@ export default function CuringProgress() {
             {
               file,
               source: 'camera-video',
-              capturedAt,
-              latitude: location.latitude,
-              longitude: location.longitude,
+              capturedAt: captureContext.capturedAt,
+              latitude: captureContext.latitude,
+              longitude: captureContext.longitude,
             },
           ]);
           discardCameraResultRef.current = true;
@@ -559,7 +615,7 @@ export default function CuringProgress() {
                   )}
                   <button
                     type="button"
-                    onClick={() => openCameraCapture('photo')}
+                    onClick={() => { void openCameraCapture('photo'); }}
                     className="inline-flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-black text-slate-700 hover:bg-slate-50"
                   >
                     <Camera className="h-4 w-4 text-blue-500" />
@@ -567,7 +623,7 @@ export default function CuringProgress() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => openCameraCapture('video')}
+                    onClick={() => { void openCameraCapture('video'); }}
                     className="inline-flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-black text-slate-700 hover:bg-slate-50"
                   >
                     <Video className="h-4 w-4 text-blue-500" />
