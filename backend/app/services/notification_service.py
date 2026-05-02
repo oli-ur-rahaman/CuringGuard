@@ -322,6 +322,7 @@ def process_daily_structure_notifications(db: Session) -> None:
 
 
 def build_structure_message_draft(db: Session, *, structure_id: int, current_user: User) -> dict:
+    today = get_local_now(db).date()
     row = (
         db.query(
             Structure.id.label("structure_id"),
@@ -332,6 +333,8 @@ def build_structure_message_draft(db: Session, *, structure_id: int, current_use
             User.mobile_number.label("contractor_mobile"),
             DrawingElement.member_name.label("element_member_name"),
             DrawingElement.element_type.label("element_type"),
+            DrawingElement.curing_start_date.label("curing_start_date"),
+            DrawingElement.curing_end_date.label("curing_end_date"),
         )
         .join(Package, Package.id == Structure.package_id)
         .join(Project, Project.id == Package.project_id)
@@ -351,26 +354,33 @@ def build_structure_message_draft(db: Session, *, structure_id: int, current_use
         raise ValueError("Structure not found")
 
     base = row[0]
-    today = get_local_now(db).date()
     pending_element_names: list[str] = []
     for item in row:
+        if not item.curing_start_date or not item.curing_end_date:
+            continue
+        if not (item.curing_start_date <= today <= item.curing_end_date):
+            continue
         member_name = (item.element_member_name or item.element_type or "").strip()
         if member_name and member_name not in pending_element_names:
             pending_element_names.append(member_name)
 
-    settings = get_system_setting_map(db)
-    template = settings.get("automatic_message_format") or ""
-    message = render_notification_message(
-        template,
-        contractor_name=base.contractor_name or "Contractor",
-        monitor_name=current_user.full_name or current_user.username or "CuringGuard",
-        monitor_mobile_number=current_user.mobile_number or "",
-        monitor_additional_message=current_user.notification_additional_message or "",
-        structure_name=base.structure_name,
-        pending_element_names=pending_element_names,
-        active_elements_count=len(pending_element_names),
-        current_date=today,
-    )
+    if pending_element_names:
+        settings = get_system_setting_map(db)
+        template = settings.get("automatic_message_format") or ""
+        message = render_notification_message(
+            template,
+            contractor_name=base.contractor_name or "Contractor",
+            monitor_name=current_user.full_name or current_user.username or "CuringGuard",
+            monitor_mobile_number=current_user.mobile_number or "",
+            monitor_additional_message=current_user.notification_additional_message or "",
+            structure_name=base.structure_name,
+            pending_element_names=pending_element_names,
+            active_elements_count=len(pending_element_names),
+            current_date=today,
+        )
+    else:
+        message = "no active elment"
+
     return {
         "structure_id": base.structure_id,
         "structure_name": base.structure_name,

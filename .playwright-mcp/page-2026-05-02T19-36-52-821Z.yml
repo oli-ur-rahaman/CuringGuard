@@ -1,0 +1,95 @@
+- generic [ref=e29]:
+  - complementary [ref=e30]:
+    - generic [ref=e32]:
+      - img "CuringGuard Logo" [ref=e33]
+      - generic [ref=e34]: CuringGuard
+    - navigation [ref=e35]:
+      - link "Dashboard" [ref=e36] [cursor=pointer]:
+        - /url: /
+        - img [ref=e37]
+        - generic [ref=e42]: Dashboard
+      - link "Project Hierarchy" [active] [ref=e43] [cursor=pointer]:
+        - /url: /setup
+        - img [ref=e44]
+        - generic [ref=e49]: Project Hierarchy
+      - link "PDF Plans & Canvas" [ref=e50] [cursor=pointer]:
+        - /url: /plans
+        - img [ref=e51]
+        - generic [ref=e53]: PDF Plans & Canvas
+      - link "Curing Progress" [ref=e54] [cursor=pointer]:
+        - /url: /progress
+        - img [ref=e55]
+        - generic [ref=e57]: Curing Progress
+      - link "Contractor Mgmt" [ref=e58] [cursor=pointer]:
+        - /url: /contractors
+        - img [ref=e59]
+        - generic [ref=e64]: Contractor Mgmt
+      - link "Settings" [ref=e65] [cursor=pointer]:
+        - /url: /settings
+        - img [ref=e66]
+        - generic [ref=e69]: Settings
+    - button "Sign Out" [ref=e71]:
+      - img [ref=e72]
+      - generic [ref=e75]: Sign Out
+  - generic [ref=e76]:
+    - banner [ref=e77]:
+      - button [ref=e78]:
+        - img [ref=e79]
+      - generic [ref=e80]:
+        - button [ref=e82]:
+          - img [ref=e83]
+        - generic [ref=e86] [cursor=pointer]: A
+    - main [ref=e87]:
+      - generic [ref=e319]:
+        - generic [ref=e320]:
+          - generic [ref=e321]:
+            - heading "Hierarchy Configuration" [level=1] [ref=e322]
+            - paragraph [ref=e323]: "Monitor Dashboard: Define architectural scope and deploy contractors."
+          - generic [ref=e324]:
+            - button "Total View" [ref=e325]
+            - button "Structure View" [ref=e326]
+        - generic [ref=e327]:
+          - generic [ref=e328]:
+            - generic [ref=e329]:
+              - generic [ref=e330]:
+                - img [ref=e331]
+                - heading "Projects" [level=2] [ref=e336]
+              - button [ref=e337]:
+                - img [ref=e338]
+            - generic [ref=e339]:
+              - generic [ref=e340] [cursor=pointer]:
+                - generic [ref=e341]:
+                  - heading "project1" [level=3] [ref=e342]
+                  - generic [ref=e343]: Active
+                - generic [ref=e344]:
+                  - button [ref=e345]:
+                    - img [ref=e346]
+                  - button [ref=e349]:
+                    - img [ref=e350]
+                  - img [ref=e353]
+              - generic [ref=e355] [cursor=pointer]:
+                - generic [ref=e356]:
+                  - heading "project_2" [level=3] [ref=e357]
+                  - generic [ref=e358]: Active
+                - generic [ref=e359]:
+                  - button [ref=e360]:
+                    - img [ref=e361]
+                  - button [ref=e364]:
+                    - img [ref=e365]
+                  - img [ref=e368]
+          - generic [ref=e371]:
+            - generic [ref=e372]:
+              - img [ref=e373]
+              - heading "Packages" [level=2] [ref=e377]
+            - button [ref=e378]:
+              - img [ref=e379]
+          - generic [ref=e381]:
+            - generic [ref=e382]:
+              - generic [ref=e383]:
+                - img [ref=e384]
+                - heading "Structures" [level=2] [ref=e388]
+              - button [ref=e389]:
+                - img [ref=e390]
+            - generic [ref=e392]:
+              - img [ref=e393]
+              - paragraph [ref=e397]: Select a package to view structural targets.

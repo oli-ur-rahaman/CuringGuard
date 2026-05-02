@@ -380,6 +380,16 @@ export const progressService = {
     const response = await api.get('/progress/dashboard-summary');
     return response.data;
   },
+  getPresentation: async (drawingElementId: string) => {
+    const response = await api.get(`/progress/presentation/${drawingElementId}`);
+    return response.data;
+  },
+  getMediaFile: async (mediaId: number) => {
+    const response = await api.get(`/progress/media/${mediaId}/file`, {
+      responseType: 'blob',
+    });
+    return response.data as Blob;
+  },
   createEntry: async (formData: FormData) => {
     const response = await api.post('/progress/entries', formData, {
       headers: {

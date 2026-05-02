@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { CalendarRange, Camera, Loader2, Plus, Presentation, Upload, Video, X } from 'lucide-react';
 import { progressService, systemService } from '../services/api';
+import ElementPresentationOverlay from '../components/ElementPresentationOverlay';
 
 type GanttDay = {
   date: string;
@@ -137,6 +138,7 @@ export default function CuringProgress() {
   const [cameraError, setCameraError] = useState('');
   const [cameraLoading, setCameraLoading] = useState(false);
   const [recording, setRecording] = useState(false);
+  const [presentationElementId, setPresentationElementId] = useState<string | null>(null);
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const liveVideoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -534,6 +536,7 @@ export default function CuringProgress() {
                         <td className="px-6 py-5 text-right">
                           <button
                             type="button"
+                            onClick={() => setPresentationElementId(row.drawing_element_id)}
                             title="Presentation"
                             className="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-600 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50"
                           >
@@ -729,6 +732,12 @@ export default function CuringProgress() {
           </div>
         </div>
       )}
+
+      <ElementPresentationOverlay
+        open={!!presentationElementId}
+        drawingElementId={presentationElementId}
+        onClose={() => setPresentationElementId(null)}
+      />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { CalendarRange, CheckCircle2, Clock3, Loader2, MessageSquareText, Phone, Presentation } from 'lucide-react';
 import { authService, hierarchyService, notificationService, progressService } from '../services/api';
+import ElementPresentationOverlay from '../components/ElementPresentationOverlay';
 
 type GanttDay = {
   date: string;
@@ -10,6 +11,7 @@ type GanttDay = {
 
 type ActiveRow = {
   drawing_element_id: string;
+  structure_id: number;
   structure_name: string;
   plan_name: string;
   page_name: string;
@@ -105,8 +107,13 @@ export default function Dashboard() {
   const [selectedStructureId, setSelectedStructureId] = useState<number>(0);
   const [draft, setDraft] = useState<StructureDraft | null>(null);
   const [customMessage, setCustomMessage] = useState('');
+  const [presentationElementId, setPresentationElementId] = useState<string | null>(null);
   const currentUser = authService.getCurrentUser();
   const isMonitor = currentUser?.role === 'monitor';
+  const selectedStructure = useMemo(
+    () => structures.find((structure) => structure.id === selectedStructureId) || null,
+    [structures, selectedStructureId],
+  );
 
   const loadDashboard = async () => {
     try {
@@ -153,7 +160,11 @@ export default function Dashboard() {
     void loadDraft();
   }, [selectedStructureId, isMonitor]);
 
-  const selectedActiveRows = useMemo(() => summary?.active_rows || [], [summary]);
+  const selectedActiveRows = useMemo(() => {
+    const rows = summary?.active_rows || [];
+    if (!selectedStructureId) return [];
+    return rows.filter((row) => row.structure_id === selectedStructureId);
+  }, [summary, selectedStructureId]);
 
   const handleSendCustomMessage = async () => {
     if (!draft?.contractor_id) {
@@ -302,6 +313,7 @@ export default function Dashboard() {
                           <td className="px-6 py-5 text-right">
                             <button
                               type="button"
+                              onClick={() => setPresentationElementId(row.drawing_element_id)}
                               title="Presentation"
                               className="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-600 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50"
                             >
@@ -381,8 +393,10 @@ export default function Dashboard() {
 
           <div className="rounded-[28px] border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-200 bg-slate-50 px-6 py-5">
-              <h3 className="text-lg font-black text-slate-900">Active Elements</h3>
-              <p className="mt-1 text-sm font-medium text-slate-500">Quick view of active elements for today.</p>
+              <h3 className="text-lg font-black text-slate-900">Scheduled Elements</h3>
+              <p className="mt-1 text-sm font-medium text-slate-500">
+                {selectedStructure ? selectedStructure.name : 'Select a structure to load only today-scheduled elements.'}
+              </p>
             </div>
             <div className="overflow-x-auto p-4">
               <table className="w-full min-w-[560px] border-collapse text-left">
@@ -399,7 +413,7 @@ export default function Dashboard() {
                   {selectedActiveRows.length === 0 ? (
                     <tr>
                       <td colSpan={5} className="px-4 py-10 text-center text-sm font-medium italic text-slate-400">
-                        No active elements for today.
+                        {selectedStructure ? 'No scheduled elements for today.' : 'Select a structure to view scheduled elements.'}
                       </td>
                     </tr>
                   ) : (
@@ -426,6 +440,12 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+
+      <ElementPresentationOverlay
+        open={!!presentationElementId}
+        drawingElementId={presentationElementId}
+        onClose={() => setPresentationElementId(null)}
+      />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from typing import List
@@ -85,6 +86,7 @@ def _build_progress_row_payload(drawing_element, drawing_page, drawing, structur
     today_entry = latest_progress_by_day.get(today_key)
     return {
         "drawing_element_id": drawing_element.id,
+        "structure_id": structure.id,
         "structure_name": structure.name,
         "plan_name": drawing.name,
         "page_name": drawing_page.name,
@@ -115,6 +117,51 @@ def _assert_can_submit_progress(db: Session, current_user: User, drawing_element
     if drawing_element.curing_end_date and today > drawing_element.curing_end_date:
         raise HTTPException(status_code=400, detail="This element is completed. Progress can no longer be submitted.")
     return drawing_element
+
+
+def _assert_can_access_progress_element(db: Session, current_user: User, drawing_element_id: str):
+    record = _scoped_element_query(db, current_user).filter(DrawingElement.id == drawing_element_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Drawing element not found")
+    return record
+
+
+def _presentation_window_dates(drawing_element: DrawingElement) -> list[date]:
+    if not drawing_element.curing_start_date:
+        return []
+    total_days = drawing_element.curing_duration_days
+    if isinstance(total_days, int) and total_days > 0:
+        return [drawing_element.curing_start_date + timedelta(days=index) for index in range(total_days)]
+    if drawing_element.curing_end_date and drawing_element.curing_end_date >= drawing_element.curing_start_date:
+        delta_days = max((drawing_element.curing_end_date - drawing_element.curing_start_date).days, 0)
+        return [drawing_element.curing_start_date + timedelta(days=index) for index in range(max(delta_days, 1))]
+    return [drawing_element.curing_start_date]
+
+
+def _serialize_progress_media(media: CuringProgressMedia):
+    return {
+        "media_id": media.id,
+        "file_url": f"/api/progress/media/{media.id}/file",
+        "file_type": media.file_type,
+        "mime_type": media.mime_type,
+        "captured_at": media.captured_at.isoformat() if media.captured_at else None,
+        "capture_latitude": media.capture_latitude,
+        "capture_longitude": media.capture_longitude,
+        "source_type": media.source_type,
+    }
+
+
+def _serialize_presentation_element(element: DrawingElement):
+    return {
+        "id": element.id,
+        "type": element.annotation_type,
+        "elementType": element.element_type,
+        "memberName": element.member_name or "",
+        "color": element.color,
+        "pointShape": element.point_shape or "circle",
+        "isHidden": bool(element.is_hidden),
+        "points": json.loads(element.coordinates_json),
+    }
 
 
 def _get_system_setting(db: Session):
@@ -237,6 +284,130 @@ def get_dashboard_summary(db: Session = Depends(get_db), current_user: User = De
         "active_groups": list(grouped_active.values()),
         "active_rows": flat_active_rows,
     }
+
+
+@router.get("/presentation/{drawing_element_id}")
+def get_presentation_payload(
+    drawing_element_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    drawing_element, drawing_page, drawing, structure, package, project = _assert_can_access_progress_element(db, current_user, drawing_element_id)
+
+    entries = (
+        db.query(CuringProgressEntry)
+        .filter(CuringProgressEntry.drawing_element_id == drawing_element_id)
+        .order_by(CuringProgressEntry.progress_date.asc(), CuringProgressEntry.created_at.asc(), CuringProgressEntry.id.asc())
+        .all()
+    )
+    entry_ids = [entry.id for entry in entries]
+    media_rows = (
+        db.query(CuringProgressMedia)
+        .filter(CuringProgressMedia.progress_entry_id.in_(entry_ids))
+        .order_by(CuringProgressMedia.progress_entry_id.asc(), CuringProgressMedia.id.asc())
+        .all()
+        if entry_ids
+        else []
+    )
+    submitter_ids = sorted({entry.user_id for entry in entries if entry.user_id})
+    submitter_map = {
+        user.id: (user.full_name or user.username or f"User {user.id}")
+        for user in db.query(User).filter(User.id.in_(submitter_ids)).all()
+    } if submitter_ids else {}
+
+    media_by_entry: dict[int, list[dict]] = defaultdict(list)
+    for media in media_rows:
+        media_by_entry[media.progress_entry_id].append(_serialize_progress_media(media))
+
+    entries_by_day: dict[str, list[dict]] = defaultdict(list)
+    latest_entry_by_day: dict[str, CuringProgressEntry] = {}
+    for entry in entries:
+        day_key = entry.progress_date.isoformat()
+        serialized_entry = {
+            "entry_id": entry.id,
+            "created_at": entry.created_at.isoformat() if entry.created_at else None,
+            "did_cure_today": bool(entry.did_cure_today),
+            "remark": entry.remark,
+            "submitted_by": submitter_map.get(entry.user_id, f"User {entry.user_id}"),
+            "media": media_by_entry.get(entry.id, []),
+        }
+        entries_by_day[day_key].append(serialized_entry)
+        latest_entry_by_day[day_key] = entry
+
+    today = date.today()
+    timeline_dates = _presentation_window_dates(drawing_element)
+    timeline_days = []
+    missed_days_count = 0
+    for day_value in timeline_dates:
+        day_key = day_value.isoformat()
+        day_entries = entries_by_day.get(day_key, [])
+        latest_entry = latest_entry_by_day.get(day_key)
+        if latest_entry is None:
+            day_status = "no_update"
+        else:
+            day_status = "cured" if latest_entry.did_cure_today else "not_cured"
+
+        if day_value < today and day_status in {"no_update", "not_cured"}:
+            missed_days_count += 1
+
+        timeline_days.append({
+            "date": day_key,
+            "day_status": day_status,
+            "entry_count": len(day_entries),
+            "media_count": sum(len(entry["media"]) for entry in day_entries),
+            "entries": day_entries,
+        })
+
+    total_days = drawing_element.curing_duration_days or max((drawing_element.curing_end_date - drawing_element.curing_start_date).days, 0)
+    is_completed = bool(drawing_element.curing_end_date and today > drawing_element.curing_end_date)
+
+    return {
+        "drawing_element_id": drawing_element.id,
+        "element_name": drawing_element.member_name or drawing_element.element_type,
+        "structure_name": structure.name,
+        "plan_name": drawing.name,
+        "page_name": drawing_page.name,
+        "drawing_id": drawing.id,
+        "drawing_page_id": drawing_page.id,
+        "page_id": drawing_page.page_ref,
+        "page_kind": drawing_page.kind,
+        "page_number": drawing_page.source_page_number,
+        "drawing_asset_kind": drawing.asset_kind,
+        "start_date": drawing_element.curing_start_date.isoformat() if drawing_element.curing_start_date else None,
+        "end_date": drawing_element.curing_end_date.isoformat() if drawing_element.curing_end_date else None,
+        "total_days": total_days,
+        "missed_days_count": missed_days_count,
+        "is_completed": is_completed,
+        "element_annotation": _serialize_presentation_element(drawing_element),
+        "timeline_days": timeline_days,
+    }
+
+
+@router.get("/media/{media_id}/file")
+def get_progress_media_file(
+    media_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    media = (
+        db.query(CuringProgressMedia, CuringProgressEntry)
+        .join(CuringProgressEntry, CuringProgressMedia.progress_entry_id == CuringProgressEntry.id)
+        .filter(CuringProgressMedia.id == media_id)
+        .first()
+    )
+    if not media:
+        raise HTTPException(status_code=404, detail="Progress media not found")
+
+    media_row, entry_row = media
+    _assert_can_access_progress_element(db, current_user, entry_row.drawing_element_id)
+    if not os.path.exists(media_row.file_path):
+        raise HTTPException(status_code=404, detail="Progress media file not found on server")
+
+    return FileResponse(
+        path=media_row.file_path,
+        filename=os.path.basename(media_row.file_path),
+        media_type=media_row.mime_type or None,
+    )
 
 
 @router.post("/entries", response_model=ProgressEntryResponse)
