@@ -274,8 +274,10 @@ export const hierarchyService = {
     const response = await api.delete(`/hierarchy/structures/${structureId}`);
     return response.data;
   },
-  assignContractor: async (structureId: number, contractorId: number) => {
-    const response = await api.put(`/hierarchy/structures/${structureId}/assign?contractor_id=${contractorId}`);
+  assignContractor: async (structureId: number, contractorId?: number | null) => {
+    const response = await api.put(`/hierarchy/structures/${structureId}/assign`, null, {
+      params: { contractor_id: contractorId ?? null },
+    });
     return response.data;
   },
   toggleTenantActive: async (id: number) => {
@@ -295,6 +297,10 @@ export const hierarchyService = {
 export const userService = {
   getUsers: async (tenantId?: number, role?: string) => {
     const response = await api.get('/users/', { params: { tenant_id: tenantId, role } });
+    return response.data;
+  },
+  getMe: async () => {
+    const response = await api.get('/users/me');
     return response.data;
   },
   checkEmail: async (email: string, excludeUserId?: number) => {
@@ -387,6 +393,7 @@ export const systemService = {
       manual_file_entry_enabled: boolean;
       server_time_offset_hours: number;
       sms_api_key: string;
+      sms_sender_id: string;
       automatic_message_format: string;
       server_now_utc: string;
       updated_at?: string | null;
@@ -396,6 +403,7 @@ export const systemService = {
     manual_file_entry_enabled?: boolean;
     server_time_offset_hours?: number;
     sms_api_key?: string;
+    sms_sender_id?: string;
     automatic_message_format?: string;
   }) => {
     const response = await api.patch('/system/settings', data);
@@ -403,6 +411,7 @@ export const systemService = {
       manual_file_entry_enabled: boolean;
       server_time_offset_hours: number;
       sms_api_key: string;
+      sms_sender_id: string;
       automatic_message_format: string;
       server_now_utc: string;
       updated_at?: string | null;

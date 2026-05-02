@@ -11,30 +11,37 @@ class SMSService:
     BASE_URL = "http://sms.greenheritageit.com/smsapi"
     
     @classmethod
-    def send_sms(cls, recipients: list, sender_id: str, message: str, transaction_type: str = "T", api_key: str | None = None):
+    def send_sms(cls, recipients: list, sender_id: str, message: str, transaction_type: str = "T", api_key: str | None = None, campaign_id: str = ""):
         """
-        Sends SMS to multiple recipients using Green Heritage IT JSON batch POST API.
+        Sends SMS to recipients using the Green Heritage IT GET API format.
         """
         api_key = api_key if api_key is not None else os.getenv("SMS_API_KEY", "MISSING_KEY")
-        
-        sms_data = []
-        for number in recipients:
-            sms_data.append({
-                "recipient": number,
-                "sender_id": sender_id,
-                "message": message
-            })
-            
-        payload = {
-            "api_key": api_key,
-            "transaction_type": transaction_type,
-            "sms_data": sms_data
-        }
-        
-        headers = {'Content-Type': 'application/json'}
-        
+
+        results = []
         try:
-            response = requests.post(cls.BASE_URL, data=json.dumps(payload), headers=headers)
-            return response.json()
+            for number in recipients:
+                response = requests.get(
+                    cls.BASE_URL,
+                    params={
+                        "apiKey": api_key,
+                        "senderId": sender_id,
+                        "transactionType": transaction_type,
+                        "campaignId": campaign_id,
+                        "mobileNo": number,
+                        "message": message,
+                    },
+                    timeout=30,
+                )
+                try:
+                    parsed = response.json()
+                except json.JSONDecodeError:
+                    parsed = {"status": "failed", "message": response.text}
+                results.append({
+                    "recipient": number,
+                    "response": parsed,
+                })
+            if len(results) == 1:
+                return results[0]["response"]
+            return {"status": "success", "results": results}
         except requests.RequestException as e:
             return {"status": "failed", "message": str(e)}

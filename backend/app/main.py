@@ -359,6 +359,10 @@ def ensure_runtime_schema():
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE users ADD COLUMN created_by_monitor_id INTEGER NULL"))
 
+    if "notification_additional_message" not in user_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE users ADD COLUMN notification_additional_message TEXT NULL"))
+
 
 ensure_runtime_schema()
 

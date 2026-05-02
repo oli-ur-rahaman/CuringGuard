@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Building2, PackageOpen, FolderGit2, 
-  ChevronRight, Plus, UserPlus, HardHat, ChevronDown, Loader2, Trash2, FileText, PenSquare, BellRing
+  ChevronRight, Plus, UserPlus, HardHat, ChevronDown, Loader2, Trash2, FileText, PenSquare, BellRing, X, UserMinus
 } from 'lucide-react';
 import { hierarchyService, userService, authService, curingService, notificationService } from '../services/api';
 
@@ -34,6 +34,12 @@ const saveHierarchyView = (projectId: number, packageId: number, mode: 'total' |
 };
 
 export default function ProjectSetup() {
+  const EMPTY_CONTRACTOR_FORM = {
+    full_name: '',
+    email: '',
+    mobile_number: '',
+    password: '',
+  };
   const persistedViewRef = useRef(loadHierarchyView());
   const [activeProject, setActiveProject] = useState<number>(persistedViewRef.current.projectId);
   const [activePackage, setActivePackage] = useState<number>(persistedViewRef.current.packageId);
@@ -51,6 +57,10 @@ export default function ProjectSetup() {
   const [uploadingStructureId, setUploadingStructureId] = useState<number | null>(null);
   const [deletingDrawingId, setDeletingDrawingId] = useState<number | null>(null);
   const [savingNotificationStructureId, setSavingNotificationStructureId] = useState<number | null>(null);
+  const [showCreateContractorModal, setShowCreateContractorModal] = useState(false);
+  const [targetStructureForContractor, setTargetStructureForContractor] = useState<number | null>(null);
+  const [creatingAndAssigningContractor, setCreatingAndAssigningContractor] = useState(false);
+  const [contractorCreateForm, setContractorCreateForm] = useState(EMPTY_CONTRACTOR_FORM);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const initialFetchDoneRef = useRef(false);
 
@@ -198,6 +208,15 @@ export default function ProjectSetup() {
       await refreshStructures(activePackage);
     } catch (e: any) {
       alert("Error assigning contractor: " + e.message);
+    }
+  };
+
+  const handleRevokeContractor = async (structureId: number) => {
+    try {
+      await hierarchyService.assignContractor(structureId, null);
+      await refreshStructures(activePackage);
+    } catch (e: any) {
+      alert(e.response?.data?.detail || e.message || 'Error revoking contractor.');
     }
   };
 
@@ -355,6 +374,59 @@ export default function ProjectSetup() {
     }
   };
 
+  const digitsOnly = (value: string) => value.replace(/\D/g, '').slice(0, 11);
+
+  const openCreateContractorModal = (structureId: number) => {
+    setTargetStructureForContractor(structureId);
+    setContractorCreateForm(EMPTY_CONTRACTOR_FORM);
+    setShowCreateContractorModal(true);
+  };
+
+  const closeCreateContractorModal = () => {
+    setShowCreateContractorModal(false);
+    setTargetStructureForContractor(null);
+    setContractorCreateForm(EMPTY_CONTRACTOR_FORM);
+  };
+
+  const handleCreateAndAssignContractor = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!targetStructureForContractor) return;
+    if (contractorCreateForm.mobile_number.length !== 11) {
+      alert('Mobile number must be exactly 11 digits.');
+      return;
+    }
+
+    try {
+      setCreatingAndAssigningContractor(true);
+      const normalizedEmail = contractorCreateForm.email.trim().toLowerCase();
+      const emailCheck = await userService.checkEmail(normalizedEmail);
+      if (emailCheck.exists) {
+        alert('This email ID is already present in the system. Use another email.');
+        return;
+      }
+      const createdContractor = await userService.create_user({
+        username: normalizedEmail,
+        email: normalizedEmail,
+        full_name: contractorCreateForm.full_name.trim(),
+        mobile_number: contractorCreateForm.mobile_number,
+        password: contractorCreateForm.password,
+        role: 'contractor',
+      });
+      await hierarchyService.assignContractor(targetStructureForContractor, createdContractor.id);
+      const [updatedContractors] = await Promise.all([
+        userService.getUsers(undefined, 'contractor'),
+        refreshStructures(activePackage),
+      ]);
+      setContractors(updatedContractors);
+      closeCreateContractorModal();
+      alert('Contractor enrolled and assigned successfully.');
+    } catch (error: any) {
+      alert(error.response?.data?.detail || 'Failed to create and assign contractor.');
+    } finally {
+      setCreatingAndAssigningContractor(false);
+    }
+  };
+
   const handleNotificationSettingChange = async (
     structureId: number,
     patch: { notification_time?: string; auto_sms_enabled?: boolean }
@@ -420,6 +492,79 @@ export default function ProjectSetup() {
             >
               Auto SMS {settings.auto_sms_enabled ? 'On' : 'Off'}
             </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderCreateContractorModal = () => {
+    if (!showCreateContractorModal) return null;
+    return (
+      <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/20 px-4">
+        <div className="w-full max-w-2xl rounded-[2rem] border border-slate-200 bg-white shadow-2xl">
+          <div className="flex items-start justify-between border-b border-slate-200 px-8 py-6">
+            <div>
+              <h2 className="text-2xl font-black tracking-tight text-slate-900">Enroll Contractor</h2>
+              <p className="mt-1 text-sm font-medium text-slate-500">Create the contractor and assign to this structure immediately.</p>
+            </div>
+            <button onClick={closeCreateContractorModal} className="rounded-xl p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          <div className="px-8 py-7">
+            <form onSubmit={handleCreateAndAssignContractor} className="grid grid-cols-1 gap-5 md:grid-cols-2">
+              <div className="md:col-span-2">
+                <label className="mb-2.5 block text-[11px] font-extrabold uppercase tracking-widest text-slate-500">Name of Contractor</label>
+                <input
+                  required
+                  type="text"
+                  value={contractorCreateForm.full_name}
+                  onChange={(e) => setContractorCreateForm((current) => ({ ...current, full_name: e.target.value }))}
+                  className="w-full rounded-xl border-2 border-slate-200 p-3.5 font-extrabold text-slate-900 transition-all focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-500/10"
+                />
+              </div>
+              <div>
+                <label className="mb-2.5 block text-[11px] font-extrabold uppercase tracking-widest text-slate-500">Email ID</label>
+                <input
+                  required
+                  type="email"
+                  value={contractorCreateForm.email}
+                  onChange={(e) => setContractorCreateForm((current) => ({ ...current, email: e.target.value }))}
+                  className="w-full rounded-xl border-2 border-slate-200 p-3.5 font-extrabold text-slate-900 transition-all focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-500/10"
+                />
+              </div>
+              <div>
+                <label className="mb-2.5 block text-[11px] font-extrabold uppercase tracking-widest text-slate-500">Mobile Number (WhatsApp)</label>
+                <input
+                  required
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={11}
+                  value={contractorCreateForm.mobile_number}
+                  onChange={(e) => setContractorCreateForm((current) => ({ ...current, mobile_number: digitsOnly(e.target.value) }))}
+                  className="w-full rounded-xl border-2 border-slate-200 p-3.5 font-extrabold text-slate-900 transition-all focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-500/10"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="mb-2.5 block text-[11px] font-extrabold uppercase tracking-widest text-slate-500">Initial Password</label>
+                <input
+                  required
+                  type="password"
+                  value={contractorCreateForm.password}
+                  onChange={(e) => setContractorCreateForm((current) => ({ ...current, password: e.target.value }))}
+                  className="w-full rounded-xl border-2 border-slate-200 p-3.5 font-extrabold text-slate-900 transition-all focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-500/10"
+                />
+              </div>
+              <div className="md:col-span-2 flex justify-end gap-3 pt-2">
+                <button type="button" onClick={closeCreateContractorModal} className="rounded-xl border border-slate-200 px-5 py-3 font-bold text-slate-600 transition-colors hover:bg-slate-50">
+                  Cancel
+                </button>
+                <button type="submit" disabled={creatingAndAssigningContractor} className="flex min-w-[210px] items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 font-extrabold text-white shadow-lg shadow-blue-600/20 transition-all hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
+                  {creatingAndAssigningContractor ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Save and Assign'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       </div>
@@ -574,9 +719,11 @@ export default function ProjectSetup() {
                                     <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-900">
                                       <HardHat className="h-4 w-4 text-amber-400" />
                                     </div>
-                                    <span className="text-sm font-extrabold text-slate-900">{assignedCon.username}</span>
+                                    <span className="text-sm font-extrabold text-slate-900">{assignedCon.full_name || assignedCon.email || assignedCon.username}</span>
                                   </div>
-                                  <button className="text-[11px] font-extrabold uppercase tracking-wider text-red-500 hover:text-red-700">Revoke</button>
+                                  <button onClick={() => void handleRevokeContractor(s.id)} title="Revoke contractor" className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-red-600">
+                                    <UserMinus className="h-4 w-4" />
+                                  </button>
                                 </div>
                               ) : (
                                 <div className="relative">
@@ -587,7 +734,7 @@ export default function ProjectSetup() {
                                   >
                                     <option value="" disabled>DEPLOY CONTRACTOR...</option>
                                     {contractors.map(c => (
-                                      <option key={c.id} value={c.id}>{c.username}</option>
+                                      <option key={c.id} value={c.id}>{c.full_name || c.email || c.username}</option>
                                     ))}
                                   </select>
                                   <UserPlus className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -596,7 +743,7 @@ export default function ProjectSetup() {
                               )}
                             </div>
 
-                            <button className="h-[52px] min-w-[170px] rounded-[18px] border border-white bg-[linear-gradient(180deg,#eef5ff_0%,#dfeeff_100%)] px-4 text-[12px] font-extrabold text-blue-700 shadow-sm transition-all hover:border-white hover:bg-[linear-gradient(180deg,#e7f0ff_0%,#d6e8ff_100%)]">
+                            <button onClick={() => openCreateContractorModal(s.id)} className="h-[52px] min-w-[170px] rounded-[18px] border border-white bg-[linear-gradient(180deg,#eef5ff_0%,#dfeeff_100%)] px-4 text-[12px] font-extrabold text-blue-700 shadow-sm transition-all hover:border-white hover:bg-[linear-gradient(180deg,#e7f0ff_0%,#d6e8ff_100%)]">
                               + Create Contractor
                             </button>
                           </div>
@@ -720,9 +867,11 @@ export default function ProjectSetup() {
                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-900">
                                  <HardHat className="h-4 w-4 text-amber-400" />
                                </div>
-                               <span className="text-sm font-extrabold text-slate-900">{assignedCon.username}</span>
+                               <span className="text-sm font-extrabold text-slate-900">{assignedCon.full_name || assignedCon.email || assignedCon.username}</span>
                              </div>
-                             <button className="text-[11px] font-extrabold uppercase tracking-wider text-red-500 hover:text-red-700">Revoke</button>
+                             <button onClick={() => void handleRevokeContractor(s.id)} title="Revoke contractor" className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-red-600">
+                               <UserMinus className="h-4 w-4" />
+                             </button>
                            </div>
                          ) : (
                            <div className="relative">
@@ -733,7 +882,7 @@ export default function ProjectSetup() {
                              >
                                <option value="" disabled>DEPLOY CONTRACTOR...</option>
                                {contractors.map(c => (
-                                 <option key={c.id} value={c.id}>{c.username}</option>
+                                 <option key={c.id} value={c.id}>{c.full_name || c.email || c.username}</option>
                                ))}
                              </select>
                              <UserPlus className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -742,7 +891,7 @@ export default function ProjectSetup() {
                          )}
                        </div>
 
-                       <button className="h-[52px] min-w-[170px] rounded-[18px] border border-white bg-[linear-gradient(180deg,#eef5ff_0%,#dfeeff_100%)] px-4 text-[12px] font-extrabold text-blue-700 shadow-sm transition-all hover:border-white hover:bg-[linear-gradient(180deg,#e7f0ff_0%,#d6e8ff_100%)]">
+                       <button onClick={() => openCreateContractorModal(s.id)} className="h-[52px] min-w-[170px] rounded-[18px] border border-white bg-[linear-gradient(180deg,#eef5ff_0%,#dfeeff_100%)] px-4 text-[12px] font-extrabold text-blue-700 shadow-sm transition-all hover:border-white hover:bg-[linear-gradient(180deg,#e7f0ff_0%,#d6e8ff_100%)]">
                          + Create Contractor
                        </button>
                      </div>
@@ -827,6 +976,7 @@ export default function ProjectSetup() {
          )}
       </div>
       )}
+      {renderCreateContractorModal()}
     </div>
   );
 }

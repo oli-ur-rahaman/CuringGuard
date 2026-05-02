@@ -6,6 +6,7 @@ from typing import List
 from backend.app.core.auth import get_current_user, get_password_hash
 from backend.app.core.database import get_db
 from backend.app.models.curing import CustomElement, DefaultElement
+from backend.app.models.system import SystemSetting
 from backend.app.models.users import User, UserRole
 from backend.app.schemas.users import UserCreate, UserResponse
 from backend.app.services.sms_service import SMSService
@@ -63,6 +64,11 @@ def check_email_availability(email: str, exclude_user_id: int | None = None, db:
         query = query.filter(User.id != exclude_user_id)
     existing_user = query.first()
     return {"exists": existing_user is not None}
+
+
+@router.get("/me", response_model=UserResponse)
+def get_me(current_user: User = Depends(get_current_user)):
+    return current_user
 
 
 @router.post("/", response_model=UserResponse)
@@ -196,5 +202,9 @@ def ping_user(user_id: int, message: str = Query(...), db: Session = Depends(get
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    result = SMSService.send_sms(recipients=[user.mobile_number], sender_id="CURING", message=message)
+    sender_setting = db.query(SystemSetting).filter(SystemSetting.setting_key == "sms_sender_id").first()
+    api_key_setting = db.query(SystemSetting).filter(SystemSetting.setting_key == "sms_api_key").first()
+    sender_id = (sender_setting.setting_value if sender_setting and sender_setting.setting_value else "8809617612022")
+    api_key = api_key_setting.setting_value if api_key_setting and api_key_setting.setting_value else None
+    result = SMSService.send_sms(recipients=[user.mobile_number], sender_id=sender_id, message=message, api_key=api_key)
     return result

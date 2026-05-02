@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Form
+from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Form, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import List
@@ -397,7 +397,7 @@ def delete_structure(structure_id: int, db: Session = Depends(get_db), current_u
     return {"status": "success", "structure_id": structure_id}
 
 @router.put("/structures/{structure_id}/assign")
-def assign_contractor(structure_id: int, contractor_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def assign_contractor(structure_id: int, contractor_id: int | None = Query(None), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     db_structure = db.query(Structure).filter(Structure.id == structure_id).first()
     if not db_structure:
         raise HTTPException(status_code=404, detail="Structure not found")

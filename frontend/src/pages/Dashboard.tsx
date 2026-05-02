@@ -84,10 +84,15 @@ export default function Dashboard() {
 
     try {
       setMessageSaving(true);
-      await notificationService.sendCustomMessage({
+      const response = await notificationService.sendCustomMessage({
         contractor_id: selectedContractorId,
         message: trimmedMessage,
       });
+      const smsStatus = String(response?.sms_result?.status || '').toLowerCase();
+      if (smsStatus && smsStatus !== 'success') {
+        alert(response?.sms_result?.message || 'SMS provider rejected the message.');
+        return;
+      }
       setCustomMessage('');
       alert('Instruction sent successfully.');
     } catch (error: any) {

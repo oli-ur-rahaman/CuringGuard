@@ -7,10 +7,14 @@ export default function Settings() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [settingsLoading, setSettingsLoading] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
   const [message, setMessage] = useState({ text: '', type: '' });
   const [manualFileEntryEnabled, setManualFileEntryEnabled] = useState(true);
+  const [monitorMobileNumber, setMonitorMobileNumber] = useState('');
+  const [monitorAdditionalMessage, setMonitorAdditionalMessage] = useState('');
   const currentUser = authService.getCurrentUser();
   const isSuperadmin = currentUser?.role === 'superadmin';
+  const isMonitor = currentUser?.role === 'monitor';
 
   React.useEffect(() => {
     if (!isSuperadmin) return;
@@ -24,6 +28,20 @@ export default function Settings() {
     };
     void loadSystemSettings();
   }, [isSuperadmin]);
+
+  React.useEffect(() => {
+    if (!isMonitor) return;
+    const loadMonitorProfile = async () => {
+      try {
+        const me = await userService.getMe();
+        setMonitorMobileNumber(me.mobile_number || '');
+        setMonitorAdditionalMessage(me.notification_additional_message || '');
+      } catch {
+        // Keep current values on load failure.
+      }
+    };
+    void loadMonitorProfile();
+  }, [isMonitor]);
 
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -73,6 +91,28 @@ export default function Settings() {
       setMessage({ text: err.response?.data?.detail || 'Failed to update system setting.', type: 'error' });
     } finally {
       setSettingsLoading(false);
+    }
+  };
+
+  const handleMonitorMessageSave = async () => {
+    try {
+      setProfileSaving(true);
+      setMessage({ text: '', type: '' });
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('No token found');
+      const base64Url = token.split('.')[1];
+      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      const payload = JSON.parse(window.atob(base64));
+      const response = await userService.update_user(payload.user_id, {
+        notification_additional_message: monitorAdditionalMessage,
+      });
+      setMonitorMobileNumber(response.mobile_number || monitorMobileNumber);
+      setMonitorAdditionalMessage(response.notification_additional_message || '');
+      setMessage({ text: 'Monitor notification message updated successfully.', type: 'success' });
+    } catch (err: any) {
+      setMessage({ text: err.response?.data?.detail || 'Failed to update monitor notification message.', type: 'error' });
+    } finally {
+      setProfileSaving(false);
     }
   };
 
@@ -128,6 +168,45 @@ export default function Settings() {
           </button>
         </form>
       </div>
+
+      {isMonitor && (
+        <div className="mt-6 bg-white border border-slate-200 rounded-3xl p-6 md:p-10 shadow-sm max-w-2xl">
+          <h2 className="text-xl font-extrabold text-slate-900 mb-6">Notification Identity</h2>
+          <div className="space-y-5">
+            <div>
+              <label className="block text-[11px] font-extrabold text-slate-500 uppercase tracking-widest mb-2.5">Your Mobile Number Placeholder</label>
+              <input
+                type="text"
+                readOnly
+                value={monitorMobileNumber}
+                className="w-full border-2 border-slate-200 rounded-xl p-3.5 font-extrabold text-slate-900 bg-slate-50"
+              />
+              <p className="mt-2 text-sm font-medium text-slate-500">Used by the automatic message placeholder `{"{monitor's_mobile_number}"}`.</p>
+            </div>
+            <div>
+              <label className="block text-[11px] font-extrabold text-slate-500 uppercase tracking-widest mb-2.5">Additional Message</label>
+              <textarea
+                rows={4}
+                value={monitorAdditionalMessage}
+                onChange={(e) => setMonitorAdditionalMessage(e.target.value)}
+                placeholder="Add any extra instruction that should appear in automatic reminders..."
+                className="w-full border-2 border-slate-200 rounded-xl p-3.5 font-extrabold text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
+              />
+              <p className="mt-2 text-sm font-medium text-slate-500">Used by the automatic message placeholder `{"{monitor's_additioanl_message}"}`.</p>
+            </div>
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => { void handleMonitorMessageSave(); }}
+                disabled={profileSaving}
+                className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-black text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {profileSaving ? 'Saving...' : 'Save Notification Message'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isSuperadmin && (
         <div className="mt-6 bg-white border border-slate-200 rounded-3xl p-6 md:p-10 shadow-sm max-w-2xl">

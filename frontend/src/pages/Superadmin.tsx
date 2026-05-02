@@ -19,6 +19,7 @@ export default function Superadmin() {
     manual_file_entry_enabled: true,
     server_time_offset_hours: 0,
     sms_api_key: '',
+    sms_sender_id: '',
     automatic_message_format: '',
   });
   const [systemSaving, setSystemSaving] = useState(false);
@@ -51,6 +52,7 @@ export default function Superadmin() {
           manual_file_entry_enabled: !!data.manual_file_entry_enabled,
           server_time_offset_hours: Number(data.server_time_offset_hours || 0),
           sms_api_key: data.sms_api_key || '',
+          sms_sender_id: data.sms_sender_id || '',
           automatic_message_format: data.automatic_message_format || '',
         });
       }
@@ -207,6 +209,7 @@ export default function Superadmin() {
         manual_file_entry_enabled: !!response.manual_file_entry_enabled,
         server_time_offset_hours: Number(response.server_time_offset_hours || 0),
         sms_api_key: response.sms_api_key || '',
+        sms_sender_id: response.sms_sender_id || '',
         automatic_message_format: response.automatic_message_format || '',
       });
       alert('System settings updated successfully.');
@@ -519,6 +522,17 @@ export default function Superadmin() {
                   </div>
 
                   <div>
+                    <label className="block text-[11px] font-extrabold text-slate-500 uppercase tracking-widest mb-2.5">SMS Sender ID</label>
+                    <input
+                      type="text"
+                      value={systemSettings.sms_sender_id}
+                      onChange={(e) => setSystemSettings((current) => ({ ...current, sms_sender_id: e.target.value }))}
+                      className="w-full border-2 border-slate-200 rounded-xl p-3.5 font-extrabold text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
+                    />
+                    <p className="mt-2 text-sm font-medium text-slate-500">Approved Green Heritage sender ID / long number used for actual SMS delivery.</p>
+                  </div>
+
+                  <div>
                     <label className="block text-[11px] font-extrabold text-slate-500 uppercase tracking-widest mb-2.5">Automatic Message Format</label>
                     <textarea
                       rows={4}
@@ -526,7 +540,7 @@ export default function Superadmin() {
                       onChange={(e) => setSystemSettings((current) => ({ ...current, automatic_message_format: e.target.value }))}
                       className="w-full border-2 border-slate-200 rounded-xl p-3.5 font-extrabold text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
                     />
-                    <p className="mt-2 text-sm font-medium text-slate-500">Available placeholders: {'{contractor_name}'}, {'{monitor_name}'}, {'{structure_name}'}, {'{active_elements_count}'}, {'{date}'}.</p>
+                    <p className="mt-2 text-sm font-medium text-slate-500">Available placeholders: {'{contractor_name}'}, {'{monitor_name}'}, {'{structure_name}'}, {'{active_elements_count}'}, {'{date}'}, {'{structure_name:_corresponding_pending_elements_name}'}, {"{monitor's_additioanl_message}"}, {"{monitor's_mobile_number}"}.</p>
                   </div>
 
                   <div className="flex justify-end">

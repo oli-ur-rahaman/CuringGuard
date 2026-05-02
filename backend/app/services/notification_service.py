@@ -20,7 +20,7 @@ def get_system_setting_map(db: Session) -> dict[str, str]:
             """
             SELECT setting_key, setting_value
             FROM system_settings
-            WHERE setting_key IN ('server_time_offset_hours', 'sms_api_key', 'automatic_message_format')
+            WHERE setting_key IN ('server_time_offset_hours', 'sms_api_key', 'sms_sender_id', 'automatic_message_format')
             """
         )
     ).mappings().all()
@@ -45,6 +45,16 @@ def get_system_setting_map(db: Session) -> dict[str, str]:
             )
         )
         setting_map["sms_api_key"] = ""
+    if "sms_sender_id" not in setting_map:
+        db.execute(
+            text(
+                """
+                INSERT INTO system_settings (setting_key, setting_value, category, description)
+                VALUES ('sms_sender_id', '8809617612022', 'notifications', 'Approved sender ID / long number for Green Heritage IT SMS')
+                """
+            )
+        )
+        setting_map["sms_sender_id"] = "8809617612022"
     if "automatic_message_format" not in setting_map:
         db.execute(
             text(
@@ -62,6 +72,18 @@ def get_system_setting_map(db: Session) -> dict[str, str]:
         setting_map["automatic_message_format"] = "Dear {contractor_name}, please carry out curing for structure {structure_name} today and submit the progress update in CuringGuard."
     db.commit()
     return setting_map
+
+
+def get_sms_sender_id(setting_map: dict[str, str]) -> str:
+    return (setting_map.get("sms_sender_id") or "8809617612022").strip() or "8809617612022"
+
+
+def is_sms_result_failed(sms_result) -> bool:
+    if not isinstance(sms_result, dict):
+        return False
+    status_value = str(sms_result.get("status", "")).strip().lower()
+    message_value = str(sms_result.get("message", "")).strip().lower()
+    return status_value in {"failed", "error"} or "wrong" in message_value or "error" in message_value
 
 
 def get_local_now(db: Session) -> datetime:
@@ -117,6 +139,8 @@ def _get_active_structure_rows(db: Session, target_date: date):
             User.full_name.label("contractor_name"),
             User.mobile_number.label("contractor_mobile"),
             DrawingElement.id.label("element_id"),
+            DrawingElement.member_name.label("element_member_name"),
+            DrawingElement.element_type.label("element_type"),
         )
         .join(Drawing, Drawing.structure_id == Structure.id)
         .join(Package, Package.id == Structure.package_id)
@@ -135,7 +159,7 @@ def _get_active_structure_rows(db: Session, target_date: date):
         )
         .all()
     )
-    grouped: dict[int, dict] = defaultdict(lambda: {"active_elements_count": 0})
+    grouped: dict[int, dict] = defaultdict(lambda: {"active_elements_count": 0, "pending_element_names": []})
     for row in rows:
         current = grouped[row.structure_id]
         current.update(
@@ -149,7 +173,36 @@ def _get_active_structure_rows(db: Session, target_date: date):
             }
         )
         current["active_elements_count"] += 1
+        element_name = (row.element_member_name or row.element_type or f"Element {row.element_id}" or "").strip()
+        if element_name and element_name not in current["pending_element_names"]:
+            current["pending_element_names"].append(element_name)
     return list(grouped.values())
+
+
+def render_notification_message(
+    template: str,
+    *,
+    contractor_name: str,
+    monitor_name: str,
+    monitor_mobile_number: str,
+    monitor_additional_message: str,
+    structure_name: str,
+    pending_element_names: list[str],
+    active_elements_count: int,
+    current_date: date,
+) -> str:
+    pending_text = ", ".join(pending_element_names) if pending_element_names else "No pending elements"
+    structure_pending_text = f"{structure_name}: {pending_text}"
+    rendered = template
+    rendered = rendered.replace("{structure_name:_corresponding_pending_elements_name}", structure_pending_text)
+    rendered = rendered.replace("{monitor's_additioanl_message}", (monitor_additional_message or "").strip())
+    rendered = rendered.replace("{monitor's_mobile_number}", (monitor_mobile_number or "").strip())
+    rendered = rendered.replace("{contractor_name}", contractor_name)
+    rendered = rendered.replace("{monitor_name}", monitor_name)
+    rendered = rendered.replace("{structure_name}", structure_name)
+    rendered = rendered.replace("{active_elements_count}", str(active_elements_count))
+    rendered = rendered.replace("{date}", current_date.isoformat())
+    return rendered
 
 
 def process_daily_structure_notifications(db: Session) -> None:
@@ -158,6 +211,7 @@ def process_daily_structure_notifications(db: Session) -> None:
     current_hhmm = local_now.strftime("%H:%M")
     settings = get_system_setting_map(db)
     template = settings.get("automatic_message_format") or ""
+    sms_sender_id = get_sms_sender_id(settings)
 
     active_structures = _get_active_structure_rows(db, today)
     if not active_structures:
@@ -188,11 +242,14 @@ def process_daily_structure_notifications(db: Session) -> None:
         monitor = monitor_map.get(row["monitor_user_id"])
         monitor_name = monitor.full_name if monitor and monitor.full_name else (monitor.username if monitor else "CuringGuard")
         contractor_name = row["contractor_name"] or "Contractor"
-        message = render_automatic_message(
+        message = render_notification_message(
             template,
             contractor_name=contractor_name,
             monitor_name=monitor_name,
+            monitor_mobile_number=monitor.mobile_number if monitor and monitor.mobile_number else "",
+            monitor_additional_message=monitor.notification_additional_message if monitor and monitor.notification_additional_message else "",
             structure_name=row["structure_name"],
+            pending_element_names=row["pending_element_names"],
             active_elements_count=row["active_elements_count"],
             current_date=today,
         )
@@ -244,19 +301,21 @@ def process_daily_structure_notifications(db: Session) -> None:
                 .first()
             )
             if not existing_sms and row["contractor_mobile"]:
-                SMSService.send_sms(
+                sms_result = SMSService.send_sms(
                     recipients=[row["contractor_mobile"]],
-                    sender_id=monitor_name,
+                    sender_id=sms_sender_id,
                     message=message,
+                    api_key=settings.get("sms_api_key", ""),
                 )
-                db.add(
-                    NotificationDispatchLog(
-                        structure_id=row["structure_id"],
-                        contractor_id=row["contractor_id"],
-                        channel="sms",
-                        dispatch_type="scheduled",
-                        dispatch_date=today,
+                if not is_sms_result_failed(sms_result):
+                    db.add(
+                        NotificationDispatchLog(
+                            structure_id=row["structure_id"],
+                            contractor_id=row["contractor_id"],
+                            channel="sms",
+                            dispatch_type="scheduled",
+                            dispatch_date=today,
+                        )
                     )
-                )
 
     db.commit()

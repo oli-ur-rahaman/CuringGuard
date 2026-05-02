@@ -72,6 +72,13 @@ def _get_or_create_system_setting(db: Session) -> dict:
         "notifications",
         "Green Heritage IT SMS API key",
     )
+    sms_sender_row = _ensure_setting_row(
+        db,
+        "sms_sender_id",
+        "8809617612022",
+        "notifications",
+        "Approved sender ID / long number for Green Heritage IT SMS",
+    )
     message_format_row = _ensure_setting_row(
         db,
         "automatic_message_format",
@@ -83,6 +90,7 @@ def _get_or_create_system_setting(db: Session) -> dict:
         "manual_file_entry_enabled": str(manual_row["setting_value"]).lower() != "no",
         "server_time_offset_hours": int(offset_row["setting_value"] or 0),
         "sms_api_key": sms_api_row["setting_value"] or "",
+        "sms_sender_id": sms_sender_row["setting_value"] or "8809617612022",
         "automatic_message_format": message_format_row["setting_value"] or "",
         "server_now_utc": datetime.now(timezone.utc),
         "updated_at": None,
@@ -108,6 +116,7 @@ def update_system_settings(
     manual_enabled = current["manual_file_entry_enabled"] if payload.manual_file_entry_enabled is None else payload.manual_file_entry_enabled
     server_offset = current["server_time_offset_hours"] if payload.server_time_offset_hours is None else payload.server_time_offset_hours
     sms_api_key = current["sms_api_key"] if payload.sms_api_key is None else payload.sms_api_key
+    sms_sender_id = current["sms_sender_id"] if payload.sms_sender_id is None else payload.sms_sender_id
     automatic_message_format = current["automatic_message_format"] if payload.automatic_message_format is None else payload.automatic_message_format
     db.execute(
         text("UPDATE system_settings SET setting_value = :value WHERE setting_key = 'manual_file_entry'"),
@@ -122,6 +131,10 @@ def update_system_settings(
         {"value": sms_api_key or ""},
     )
     db.execute(
+        text("UPDATE system_settings SET setting_value = :value WHERE setting_key = 'sms_sender_id'"),
+        {"value": sms_sender_id or "8809617612022"},
+    )
+    db.execute(
         text("UPDATE system_settings SET setting_value = :value WHERE setting_key = 'automatic_message_format'"),
         {"value": automatic_message_format or ""},
     )
@@ -130,6 +143,7 @@ def update_system_settings(
         "manual_file_entry_enabled": manual_enabled,
         "server_time_offset_hours": int(server_offset),
         "sms_api_key": sms_api_key or "",
+        "sms_sender_id": sms_sender_id or "8809617612022",
         "automatic_message_format": automatic_message_format or "",
         "server_now_utc": datetime.now(timezone.utc),
         "updated_at": None,

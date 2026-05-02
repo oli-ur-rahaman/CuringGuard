@@ -14,7 +14,7 @@ from backend.app.schemas.notifications import (
     StructureNotificationSettingUpdate,
     WebNotificationResponse,
 )
-from backend.app.services.notification_service import create_web_notification, get_system_setting_map
+from backend.app.services.notification_service import create_web_notification, get_sms_sender_id, get_system_setting_map, is_sms_result_failed
 from backend.app.services.sms_service import SMSService
 
 router = APIRouter(prefix="/api/notifications", tags=["Notifications"])
@@ -150,6 +150,7 @@ def send_custom_notification(
 
     system_settings = get_system_setting_map(db)
     sms_api_key = system_settings.get("sms_api_key", "")
+    sms_sender_id = get_sms_sender_id(system_settings)
 
     sender_name = (current_user.full_name or current_user.username or "CuringGuard").strip()
     message = payload.message.strip()
@@ -158,10 +159,12 @@ def send_custom_notification(
 
     sms_result = SMSService.send_sms(
         recipients=[contractor.mobile_number],
-        sender_id=sender_name,
+        sender_id=sms_sender_id,
         message=message,
         api_key=sms_api_key,
     )
+    if is_sms_result_failed(sms_result):
+        raise HTTPException(status_code=400, detail=f"SMS provider rejected the message: {sms_result.get('message', 'Unknown error')}")
 
     create_web_notification(
         db,
