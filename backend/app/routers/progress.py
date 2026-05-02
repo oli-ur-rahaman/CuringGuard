@@ -1,5 +1,5 @@
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -74,6 +74,38 @@ def _load_latest_progress_map(db: Session, element_ids: List[str]):
     return latest_map
 
 
+def _build_progress_row_payload(drawing_element, drawing_page, drawing, structure, latest_progress_by_day: dict[str, CuringProgressEntry], today_key: str):
+    total_days = drawing_element.curing_duration_days or max((drawing_element.curing_end_date - drawing_element.curing_start_date).days, 0)
+    elapsed_days = 0
+    if drawing_element.curing_start_date:
+        elapsed_days = max((min(date.today(), drawing_element.curing_end_date) - drawing_element.curing_start_date).days, 0) if drawing_element.curing_end_date else max((date.today() - drawing_element.curing_start_date).days, 0)
+        if total_days:
+            elapsed_days = min(elapsed_days, total_days)
+    is_completed = bool(drawing_element.curing_end_date and date.today() > drawing_element.curing_end_date)
+    today_entry = latest_progress_by_day.get(today_key)
+    return {
+        "drawing_element_id": drawing_element.id,
+        "structure_name": structure.name,
+        "plan_name": drawing.name,
+        "page_name": drawing_page.name,
+        "element_name": drawing_element.member_name or drawing_element.element_type,
+        "start_date": drawing_element.curing_start_date.isoformat(),
+        "end_date": drawing_element.curing_end_date.isoformat() if drawing_element.curing_end_date else "",
+        "total_days": total_days,
+        "elapsed_days": elapsed_days,
+        "is_completed": is_completed,
+        "today_status": "added" if today_entry else "pending",
+        "gantt_days": [
+            {
+                "date": day_key,
+                "did_cure_today": bool(entry.did_cure_today),
+                "entry_id": entry.id,
+            }
+            for day_key, entry in sorted(latest_progress_by_day.items(), key=lambda item: item[0])
+        ],
+    }
+
+
 def _assert_can_submit_progress(db: Session, current_user: User, drawing_element_id: str):
     record = _scoped_element_query(db, current_user).filter(DrawingElement.id == drawing_element_id).first()
     if not record:
@@ -135,42 +167,76 @@ def get_progress_rows(db: Session = Depends(get_db), current_user: User = Depend
     grouped: dict[int, dict] = {}
     for drawing_element, drawing_page, drawing, structure, package, project in rows:
         latest_by_day = latest_progress.get(drawing_element.id, {})
-        total_days = drawing_element.curing_duration_days or max((drawing_element.curing_end_date - drawing_element.curing_start_date).days, 0)
-        elapsed_days = 0
-        if drawing_element.curing_start_date:
-            elapsed_days = max((min(date.today(), drawing_element.curing_end_date) - drawing_element.curing_start_date).days, 0) if drawing_element.curing_end_date else max((date.today() - drawing_element.curing_start_date).days, 0)
-            if total_days:
-                elapsed_days = min(elapsed_days, total_days)
-        is_completed = bool(drawing_element.curing_end_date and date.today() > drawing_element.curing_end_date)
-        today_entry = latest_by_day.get(today_key)
         if structure.id not in grouped:
             grouped[structure.id] = {
                 "structure_id": structure.id,
                 "structure_name": structure.name,
                 "rows": [],
             }
-        grouped[structure.id]["rows"].append({
-            "drawing_element_id": drawing_element.id,
-            "plan_name": drawing.name,
-            "page_name": drawing_page.name,
-            "element_name": drawing_element.member_name or drawing_element.element_type,
-            "start_date": drawing_element.curing_start_date.isoformat(),
-            "end_date": drawing_element.curing_end_date.isoformat() if drawing_element.curing_end_date else "",
-            "total_days": total_days,
-            "elapsed_days": elapsed_days,
-            "is_completed": is_completed,
-            "today_status": "added" if today_entry else "pending",
-            "gantt_days": [
-                {
-                    "date": day_key,
-                    "did_cure_today": bool(entry.did_cure_today),
-                    "entry_id": entry.id,
-                }
-                for day_key, entry in sorted(latest_by_day.items(), key=lambda item: item[0])
-            ],
-        })
+        grouped[structure.id]["rows"].append(
+            _build_progress_row_payload(drawing_element, drawing_page, drawing, structure, latest_by_day, today_key)
+        )
 
     return {"structures": list(grouped.values())}
+
+
+@router.get("/dashboard-summary")
+def get_dashboard_summary(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    today = date.today()
+    yesterday = today - timedelta(days=1)
+    today_key = today.isoformat()
+    yesterday_key = yesterday.isoformat()
+
+    declared_query = _scoped_element_query(db, current_user)
+    declared_rows = declared_query.all()
+    active_today_rows = [row for row in declared_rows if row[0].curing_start_date and row[0].curing_end_date and row[0].curing_start_date <= today <= row[0].curing_end_date]
+    active_yesterday_rows = [row for row in declared_rows if row[0].curing_start_date and row[0].curing_end_date and row[0].curing_start_date <= yesterday <= row[0].curing_end_date]
+
+    all_element_ids = [drawing_element.id for drawing_element, *_ in declared_rows]
+    latest_progress = _load_latest_progress_map(db, all_element_ids) if all_element_ids else {}
+
+    def count_cured(rows, day_key: str):
+        count = 0
+        for drawing_element, *_ in rows:
+            entry = latest_progress.get(drawing_element.id, {}).get(day_key)
+            if entry and entry.did_cure_today:
+                count += 1
+        return count
+
+    grouped_active: dict[int, dict] = {}
+    for drawing_element, drawing_page, drawing, structure, package, project in active_today_rows:
+        latest_by_day = latest_progress.get(drawing_element.id, {})
+        if structure.id not in grouped_active:
+            grouped_active[structure.id] = {
+                "structure_id": structure.id,
+                "structure_name": structure.name,
+                "rows": [],
+            }
+        grouped_active[structure.id]["rows"].append(
+            _build_progress_row_payload(drawing_element, drawing_page, drawing, structure, latest_by_day, today_key)
+        )
+
+    flat_active_rows = []
+    for group in grouped_active.values():
+        for row in group["rows"]:
+            flat_active_rows.append(row)
+
+    return {
+        "today_status": {
+            "cured_count": count_cured(active_today_rows, today_key),
+            "active_count": len(active_today_rows),
+        },
+        "yesterday_status": {
+            "cured_count": count_cured(active_yesterday_rows, yesterday_key),
+            "active_count": len(active_yesterday_rows),
+        },
+        "elements_status": {
+            "started_count": sum(1 for drawing_element, *_ in declared_rows if drawing_element.curing_start_date is not None),
+            "total_declared": len(declared_rows),
+        },
+        "active_groups": list(grouped_active.values()),
+        "active_rows": flat_active_rows,
+    }
 
 
 @router.post("/entries", response_model=ProgressEntryResponse)

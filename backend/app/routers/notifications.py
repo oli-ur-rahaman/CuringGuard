@@ -14,7 +14,7 @@ from backend.app.schemas.notifications import (
     StructureNotificationSettingUpdate,
     WebNotificationResponse,
 )
-from backend.app.services.notification_service import create_web_notification, get_sms_sender_id, get_system_setting_map, is_sms_result_failed
+from backend.app.services.notification_service import build_structure_message_draft, create_web_notification, get_sms_sender_id, get_system_setting_map, is_sms_result_failed
 from backend.app.services.sms_service import SMSService
 
 router = APIRouter(prefix="/api/notifications", tags=["Notifications"])
@@ -76,6 +76,20 @@ def get_structure_notification_settings(db: Session = Depends(get_db), current_u
             )
         )
     return response
+
+
+@router.get("/structures/{structure_id}/draft")
+def get_structure_notification_draft(
+    structure_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if current_user.role != UserRole.MONITOR:
+        raise HTTPException(status_code=403, detail="Only monitor admin can view structure notification drafts.")
+    try:
+        return build_structure_message_draft(db, structure_id=structure_id, current_user=current_user)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
 
 @router.patch("/structures/{structure_id}/settings", response_model=StructureNotificationSettingResponse)

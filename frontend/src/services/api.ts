@@ -376,6 +376,10 @@ export const progressService = {
     const response = await api.get('/progress/rows');
     return response.data;
   },
+  getDashboardSummary: async () => {
+    const response = await api.get('/progress/dashboard-summary');
+    return response.data;
+  },
   createEntry: async (formData: FormData) => {
     const response = await api.post('/progress/entries', formData, {
       headers: {
@@ -434,6 +438,10 @@ export const notificationService = {
   },
   getStructureSettings: async () => {
     const response = await api.get('/notifications/structure-settings');
+    return response.data;
+  },
+  getStructureDraft: async (structureId: number) => {
+    const response = await api.get(`/notifications/structures/${structureId}/draft`);
     return response.data;
   },
   updateStructureSettings: async (structureId: number, data: { notification_time?: string; auto_sms_enabled?: boolean; auto_web_enabled?: boolean }) => {

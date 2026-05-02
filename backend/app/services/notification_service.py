@@ -319,3 +319,63 @@ def process_daily_structure_notifications(db: Session) -> None:
                     )
 
     db.commit()
+
+
+def build_structure_message_draft(db: Session, *, structure_id: int, current_user: User) -> dict:
+    row = (
+        db.query(
+            Structure.id.label("structure_id"),
+            Structure.name.label("structure_name"),
+            Structure.contractor_id.label("contractor_id"),
+            Project.user_id.label("monitor_user_id"),
+            User.full_name.label("contractor_name"),
+            User.mobile_number.label("contractor_mobile"),
+            DrawingElement.member_name.label("element_member_name"),
+            DrawingElement.element_type.label("element_type"),
+        )
+        .join(Package, Package.id == Structure.package_id)
+        .join(Project, Project.id == Package.project_id)
+        .join(User, User.id == Structure.contractor_id)
+        .outerjoin(Drawing, Drawing.structure_id == Structure.id)
+        .outerjoin(DrawingElement, DrawingElement.drawing_id == Drawing.id)
+        .filter(
+            Structure.id == structure_id,
+            Project.user_id == current_user.id,
+            Structure.is_deleted == False,
+            Package.is_deleted == False,
+            Project.is_deleted == False,
+        )
+        .all()
+    )
+    if not row:
+        raise ValueError("Structure not found")
+
+    base = row[0]
+    today = get_local_now(db).date()
+    pending_element_names: list[str] = []
+    for item in row:
+        member_name = (item.element_member_name or item.element_type or "").strip()
+        if member_name and member_name not in pending_element_names:
+            pending_element_names.append(member_name)
+
+    settings = get_system_setting_map(db)
+    template = settings.get("automatic_message_format") or ""
+    message = render_notification_message(
+        template,
+        contractor_name=base.contractor_name or "Contractor",
+        monitor_name=current_user.full_name or current_user.username or "CuringGuard",
+        monitor_mobile_number=current_user.mobile_number or "",
+        monitor_additional_message=current_user.notification_additional_message or "",
+        structure_name=base.structure_name,
+        pending_element_names=pending_element_names,
+        active_elements_count=len(pending_element_names),
+        current_date=today,
+    )
+    return {
+        "structure_id": base.structure_id,
+        "structure_name": base.structure_name,
+        "contractor_id": base.contractor_id,
+        "contractor_name": base.contractor_name,
+        "contractor_mobile_number": base.contractor_mobile,
+        "message": message,
+    }

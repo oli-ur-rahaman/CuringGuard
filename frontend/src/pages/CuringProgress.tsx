@@ -534,13 +534,10 @@ export default function CuringProgress() {
                         <td className="px-6 py-5 text-right">
                           <button
                             type="button"
-                            title="Presentation will be added next"
-                            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-600 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50"
+                            title="Presentation"
+                            className="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-600 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50"
                           >
-                            <span className="inline-flex items-center gap-2">
-                              <Presentation className="h-4 w-4 text-blue-500" />
-                              Presentation
-                            </span>
+                            <Presentation className="h-4 w-4 text-blue-500" />
                           </button>
                         </td>
                       </tr>
