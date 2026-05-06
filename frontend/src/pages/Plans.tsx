@@ -309,6 +309,7 @@ export default function Plans() {
   const requestedDrawingId = routeDrawingId || persistedWorkspace?.drawingId || 0;
   const currentUser = authService.getCurrentUser();
   const currentUserId = currentUser?.user_id || 0;
+  const isContractor = currentUser?.role === 'contractor';
   const [activeTool, setActiveTool] = useState<ToolId>('select');
   const [treeOpen, setTreeOpen] = useState(false);
   const [elementsDrawerOpen, setElementsDrawerOpen] = useState(persistedWorkspace?.elementsDrawerOpen !== false);
@@ -1257,7 +1258,7 @@ export default function Plans() {
   };
 
   const handleUploadModalSelect = () => {
-    if (uploadMode === 'existing') {
+    if (isContractor || uploadMode === 'existing') {
       if (!selectedUploadStructureId) {
         alert('Select a structure first.');
         return;
@@ -2236,14 +2237,14 @@ export default function Plans() {
             <div className="mb-5 flex items-center justify-between">
               <div>
                 <h3 className="text-xl font-black text-slate-900">Add Plan File</h3>
-                <p className="mt-1 text-sm font-medium text-slate-500">Select an existing structure or create a new one first.</p>
+                <p className="mt-1 text-sm font-medium text-slate-500">{isContractor ? 'Select one of your assigned structures first.' : 'Select an existing structure or create a new one first.'}</p>
               </div>
               <button onClick={() => setUploadModalOpen(false)} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <div className="mb-5 inline-flex rounded-2xl border border-slate-200 bg-slate-50 p-1">
+            {!isContractor && <div className="mb-5 inline-flex rounded-2xl border border-slate-200 bg-slate-50 p-1">
               <button
                 onClick={() => setUploadMode('existing')}
                 className={`rounded-xl px-4 py-2 text-sm font-extrabold transition-colors ${uploadMode === 'existing' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}
@@ -2256,7 +2257,7 @@ export default function Plans() {
               >
                 Create Structure
               </button>
-            </div>
+            </div>}
 
             <div className="space-y-4">
               {uploadMode === 'existing' ? (

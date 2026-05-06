@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { hierarchyService, userService, authService, curingService, notificationService } from '../services/api';
 
-const HIERARCHY_VIEW_KEY = 'curingguard.hierarchy.view';
+const hierarchyViewKey = (userId: number) => `curingguard.hierarchy.view.${userId || 'anon'}`;
 
 type HierarchyViewState = {
   projectId: number;
@@ -14,9 +14,9 @@ type HierarchyViewState = {
   mode: 'total' | 'structures';
 };
 
-const loadHierarchyView = (): HierarchyViewState => {
+const loadHierarchyView = (userId: number): HierarchyViewState => {
   try {
-    const raw = localStorage.getItem(HIERARCHY_VIEW_KEY);
+    const raw = localStorage.getItem(hierarchyViewKey(userId));
     if (!raw) return { projectId: 0, packageId: 0, mode: 'total' as const };
     const parsed = JSON.parse(raw);
     return {
@@ -29,18 +29,22 @@ const loadHierarchyView = (): HierarchyViewState => {
   }
 };
 
-const saveHierarchyView = (projectId: number, packageId: number, mode: 'total' | 'structures') => {
-  localStorage.setItem(HIERARCHY_VIEW_KEY, JSON.stringify({ projectId, packageId, mode }));
+const saveHierarchyView = (userId: number, projectId: number, packageId: number, mode: 'total' | 'structures') => {
+  localStorage.setItem(hierarchyViewKey(userId), JSON.stringify({ projectId, packageId, mode }));
 };
 
 export default function ProjectSetup() {
+  const user = authService.getCurrentUser();
+  const user_id = user ? user.user_id : 0;
+  const isMonitor = user?.role === 'monitor';
+  const isContractor = user?.role === 'contractor';
   const EMPTY_CONTRACTOR_FORM = {
     full_name: '',
     email: '',
     mobile_number: '',
     password: '',
   };
-  const persistedViewRef = useRef(loadHierarchyView());
+  const persistedViewRef = useRef(loadHierarchyView(user_id));
   const [activeProject, setActiveProject] = useState<number>(persistedViewRef.current.projectId);
   const [activePackage, setActivePackage] = useState<number>(persistedViewRef.current.packageId);
   const [viewMode, setViewMode] = useState<'total' | 'structures'>(persistedViewRef.current.mode);
@@ -63,9 +67,7 @@ export default function ProjectSetup() {
   const [contractorCreateForm, setContractorCreateForm] = useState(EMPTY_CONTRACTOR_FORM);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const initialFetchDoneRef = useRef(false);
-
-  const user = authService.getCurrentUser();
-  const user_id = user ? user.user_id : 0;
+  const effectiveViewMode: 'total' | 'structures' = isContractor ? 'structures' : viewMode;
 
   const refreshPackages = async (projectId: number, preferredPackageId?: number) => {
     const pkgData = await hierarchyService.getPackages(projectId);
@@ -96,13 +98,12 @@ export default function ProjectSetup() {
     if (!user_id) return;
     try {
       setLoading(true);
-      const [projData, conData] = await Promise.all([
-        hierarchyService.getProjects(user_id),
-        userService.getUsers(undefined, 'contractor') // Note: backend also dropped tenant_id
-      ]);
+      const projectPromise = hierarchyService.getProjects(user_id);
+      const contractorPromise = isMonitor ? userService.getUsers(undefined, 'contractor') : Promise.resolve([]);
+      const [projData, conData] = await Promise.all([projectPromise, contractorPromise]);
       setProjects(projData);
       setContractors(conData);
-      if (user?.role === 'monitor') {
+      if (isMonitor) {
         const structureSettings = await notificationService.getStructureSettings();
         setNotificationSettingsByStructure(
           Object.fromEntries(
@@ -118,11 +119,29 @@ export default function ProjectSetup() {
         );
       }
       if (projData.length > 0) {
+        const packageLists = await Promise.all(projData.map((project: any) => hierarchyService.getPackages(project.id)));
+        const flatPackages = packageLists.flat();
+        setPackages(flatPackages);
+        if (isContractor) {
+          const structureLists = await Promise.all(flatPackages.map((pkg: any) => hierarchyService.getStructures(pkg.id)));
+          const strData = structureLists.flat();
+          setStructures(strData);
+          const drawingEntries = await Promise.all(
+            strData.map(async (structure: any) => [structure.id, await hierarchyService.getDrawings(structure.id)] as const)
+          );
+          setDrawingsByStructure(Object.fromEntries(drawingEntries));
+        }
         const restoredProjectId = persistedViewRef.current.projectId;
         const nextProjectId = restoredProjectId && projData.some((project: any) => project.id === restoredProjectId)
           ? restoredProjectId
           : projData[0].id;
         setActiveProject(nextProjectId);
+      } else {
+        setActiveProject(0);
+        setActivePackage(0);
+        setPackages([]);
+        setStructures([]);
+        setDrawingsByStructure({});
       }
     } catch (error) {
       console.error("Failed to load setup data", error);
@@ -138,6 +157,7 @@ export default function ProjectSetup() {
   }, []);
 
   useEffect(() => {
+    if (isContractor) return;
     if (activeProject) {
       const fetchPackages = async () => {
         const preferredPackageId = activeProject === persistedViewRef.current.projectId
@@ -147,9 +167,10 @@ export default function ProjectSetup() {
       };
       fetchPackages();
     }
-  }, [activeProject]);
+  }, [activeProject, isContractor]);
 
   useEffect(() => {
+    if (isContractor) return;
     if (activePackage) {
       const fetchStructures = async () => {
         await refreshStructures(activePackage);
@@ -159,11 +180,11 @@ export default function ProjectSetup() {
       setStructures([]);
       setDrawingsByStructure({});
     }
-  }, [activePackage]);
+  }, [activePackage, isContractor]);
 
   useEffect(() => {
-    saveHierarchyView(activeProject, activePackage, viewMode);
-  }, [activeProject, activePackage, viewMode]);
+    saveHierarchyView(user_id, activeProject, activePackage, viewMode);
+  }, [user_id, activeProject, activePackage, viewMode]);
 
   const handleAddProject = async () => {
     const name = window.prompt("Enter new Project name:");
@@ -584,9 +605,11 @@ export default function ProjectSetup() {
       <div className="mb-6 flex items-center justify-between shrink-0">
          <div>
             <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight">Hierarchy Configuration</h1>
-            <p className="text-sm md:text-base text-slate-500 font-medium tracking-wide">Monitor Dashboard: Define architectural scope and deploy contractors.</p>
+            <p className="text-sm md:text-base text-slate-500 font-medium tracking-wide">
+              {isContractor ? 'Contractor Workspace: Access assigned structures and manage plans.' : 'Monitor Dashboard: Define architectural scope and deploy contractors.'}
+            </p>
          </div>
-         <div className="inline-flex rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
+         {!isContractor && <div className="inline-flex rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
             <button
               onClick={() => setViewMode('total')}
               className={`rounded-xl px-4 py-2 text-sm font-extrabold transition-colors ${viewMode === 'total' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:text-slate-900'}`}
@@ -599,7 +622,7 @@ export default function ProjectSetup() {
             >
               Structure View
             </button>
-         </div>
+         </div>}
       </div>
       <input
         ref={fileInputRef}
@@ -609,7 +632,7 @@ export default function ProjectSetup() {
         onChange={handleStructureFileUpload}
       />
 
-      {viewMode === 'total' ? (
+      {!isContractor && effectiveViewMode === 'total' ? (
       <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-4 md:gap-6 overflow-y-auto lg:overflow-hidden pb-10 lg:pb-0">
          
          {/* COLUMN 1: PROJECTS */}
@@ -705,13 +728,13 @@ export default function ProjectSetup() {
                         </div>
 
                         <div className="rounded-[22px] border border-white bg-white px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.8),0_8px_24px_rgba(15,23,42,0.04)]">
-                          <div className="mb-4">
+                          {!isContractor && <div className="mb-4">
                             <span className="inline-flex rounded-sm border border-white bg-white px-2 py-0.5 text-[11px] font-extrabold uppercase tracking-[0.18em] text-slate-600 shadow-sm">
                               Assigned Contractor
                             </span>
-                          </div>
+                          </div>}
 
-                          <div className="mb-4 flex gap-3">
+                          {!isContractor && <div className="mb-4 flex gap-3">
                             <div className="flex-1">
                               {assignedCon ? (
                                 <div className="flex h-[52px] items-center justify-between rounded-[18px] border border-white bg-white px-4 shadow-sm">
@@ -746,9 +769,9 @@ export default function ProjectSetup() {
                             <button onClick={() => openCreateContractorModal(s.id)} className="h-[52px] min-w-[170px] rounded-[18px] border border-white bg-[linear-gradient(180deg,#eef5ff_0%,#dfeeff_100%)] px-4 text-[12px] font-extrabold text-blue-700 shadow-sm transition-all hover:border-white hover:bg-[linear-gradient(180deg,#e7f0ff_0%,#d6e8ff_100%)]">
                               + Create Contractor
                             </button>
-                          </div>
+                          </div>}
 
-                          {renderNotificationControls(s.id)}
+                          {!isContractor && renderNotificationControls(s.id)}
 
                           <div>
                             <div className="mb-3">
@@ -842,24 +865,24 @@ export default function ProjectSetup() {
                  <div key={s.id} className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.06)] transition-all hover:border-slate-300 hover:shadow-[0_18px_38px_rgba(15,23,42,0.08)]">
                    <div className="mb-4 flex items-start justify-between gap-3">
                      <h3 className="text-[30px] font-black tracking-tight text-slate-900 leading-none">{s.name}</h3>
-                     <div className="flex items-center gap-1">
+                    {!isContractor && <div className="flex items-center gap-1">
                        <button onClick={() => void handleEditStructure(s.id, s.name)} className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700">
                          <PenSquare className="h-4 w-4" />
                        </button>
                        <button onClick={() => void handleDeleteStructure(s.id, s.name)} className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-red-600">
                          <Trash2 className="h-4 w-4" />
                        </button>
-                     </div>
+                     </div>}
                    </div>
 
                    <div className="rounded-[22px] border border-white bg-white px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.8),0_8px_24px_rgba(15,23,42,0.04)]">
-                     <div className="mb-4">
+                     {!isContractor && <div className="mb-4">
                        <span className="inline-flex rounded-sm border border-white bg-white px-2 py-0.5 text-[11px] font-extrabold uppercase tracking-[0.18em] text-slate-600 shadow-sm">
                          Assigned Contractor
                        </span>
-                     </div>
+                     </div>}
 
-                     <div className="mb-4 flex gap-3">
+                     {!isContractor && <div className="mb-4 flex gap-3">
                        <div className="flex-1">
                          {assignedCon ? (
                            <div className="flex h-[52px] items-center justify-between rounded-[18px] border border-white bg-white px-4 shadow-sm">
@@ -894,9 +917,9 @@ export default function ProjectSetup() {
                        <button onClick={() => openCreateContractorModal(s.id)} className="h-[52px] min-w-[170px] rounded-[18px] border border-white bg-[linear-gradient(180deg,#eef5ff_0%,#dfeeff_100%)] px-4 text-[12px] font-extrabold text-blue-700 shadow-sm transition-all hover:border-white hover:bg-[linear-gradient(180deg,#e7f0ff_0%,#d6e8ff_100%)]">
                          + Create Contractor
                        </button>
-                     </div>
+                     </div>}
 
-                     {renderNotificationControls(s.id)}
+                     {!isContractor && renderNotificationControls(s.id)}
 
                      <div>
                        <div className="mb-3">

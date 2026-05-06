@@ -11,15 +11,18 @@ export default function Layout() {
   const notificationRef = useRef<HTMLDivElement | null>(null);
   const currentUser = authService.getCurrentUser();
   const unreadCount = notifications.filter((item) => !item.is_read).length;
+  const isContractor = currentUser?.role === 'contractor';
 
   const navItems = [
     { name: 'Dashboard', path: '/', icon: LayoutDashboard },
     { name: 'Project Hierarchy', path: '/setup', icon: FolderGit2 },
     { name: 'PDF Plans & Canvas', path: '/plans', icon: Map },
     { name: 'Curing Progress', path: '/progress', icon: CalendarRange },
-    { name: 'Contractor Mgmt', path: '/contractors', icon: Users },
     { name: 'Settings', path: '/settings', icon: Settings },
   ];
+  if (!isContractor) {
+    navItems.splice(4, 0, { name: 'Contractor Mgmt', path: '/contractors', icon: Users });
+  }
 
   const loadNotifications = async () => {
     try {

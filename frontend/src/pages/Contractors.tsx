@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
+import { Navigate } from 'react-router-dom';
 import { Ban, CheckCircle2, KeyRound, Loader2, Phone, Plus, SquarePen, Users, X } from 'lucide-react';
-import { curingService, hierarchyService, userService } from '../services/api';
+import { authService, curingService, hierarchyService, userService } from '../services/api';
 
 type ContractorRecord = {
   id: number;
@@ -28,6 +29,10 @@ const EMPTY_FORM: ContractorFormState = {
 };
 
 export default function Contractors() {
+  const currentUser = authService.getCurrentUser();
+  if (currentUser?.role === 'contractor') {
+    return <Navigate to="/" replace />;
+  }
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
@@ -46,9 +51,14 @@ export default function Contractors() {
   const fetchContractors = async () => {
     try {
       setLoading(true);
+      const monitorUserId = Number(currentUser?.user_id) || 0;
+      if (!monitorUserId) {
+        setContractors([]);
+        return;
+      }
       const [users, projects, elements] = await Promise.all([
         userService.getUsers(undefined, 'contractor'),
-        hierarchyService.getProjects(0),
+        hierarchyService.getProjects(monitorUserId),
         curingService.getElements(),
       ]);
 

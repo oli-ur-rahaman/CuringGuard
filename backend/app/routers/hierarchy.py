@@ -27,6 +27,84 @@ import json
 router = APIRouter(prefix="/api/hierarchy", tags=["Hierarchy"])
 
 
+def _scope_project_query(db: Session, current_user: User):
+    query = db.query(Project)
+    if current_user.role == UserRole.MONITOR:
+        return query.filter(Project.user_id == current_user.id)
+    if current_user.role == UserRole.CONTRACTOR:
+        return query.join(Package, Package.project_id == Project.id).join(Structure, Structure.package_id == Package.id).filter(
+            Structure.contractor_id == current_user.id
+        )
+    return query
+
+
+def _scope_package_query(db: Session, current_user: User):
+    query = db.query(Package).join(Project, Package.project_id == Project.id)
+    if current_user.role == UserRole.MONITOR:
+        return query.filter(Project.user_id == current_user.id)
+    if current_user.role == UserRole.CONTRACTOR:
+        return query.join(Structure, Structure.package_id == Package.id).filter(Structure.contractor_id == current_user.id)
+    return query
+
+
+def _scope_structure_query(db: Session, current_user: User):
+    query = db.query(Structure).join(Package, Structure.package_id == Package.id).join(Project, Package.project_id == Project.id)
+    if current_user.role == UserRole.MONITOR:
+        return query.filter(Project.user_id == current_user.id)
+    if current_user.role == UserRole.CONTRACTOR:
+        return query.filter(Structure.contractor_id == current_user.id)
+    return query
+
+
+def _scope_drawing_query(db: Session, current_user: User):
+    query = db.query(Drawing).join(Structure, Drawing.structure_id == Structure.id).join(Package, Structure.package_id == Package.id).join(Project, Package.project_id == Project.id)
+    if current_user.role == UserRole.MONITOR:
+        return query.filter(Project.user_id == current_user.id)
+    if current_user.role == UserRole.CONTRACTOR:
+        return query.filter(Structure.contractor_id == current_user.id)
+    return query
+
+
+def _get_project_or_404(db: Session, current_user: User, project_id: int) -> Project:
+    project = _scope_project_query(db, current_user).filter(
+        Project.id == project_id,
+        Project.is_deleted == False,
+    ).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return project
+
+
+def _get_package_or_404(db: Session, current_user: User, package_id: int) -> Package:
+    package = _scope_package_query(db, current_user).filter(
+        Package.id == package_id,
+        Package.is_deleted == False,
+        Project.is_deleted == False,
+    ).first()
+    if not package:
+        raise HTTPException(status_code=404, detail="Package not found")
+    return package
+
+
+def _get_structure_or_404(db: Session, current_user: User, structure_id: int) -> Structure:
+    structure = _scope_structure_query(db, current_user).filter(
+        Structure.id == structure_id,
+        Structure.is_deleted == False,
+        Package.is_deleted == False,
+        Project.is_deleted == False,
+    ).first()
+    if not structure:
+        raise HTTPException(status_code=404, detail="Structure not found")
+    return structure
+
+
+def _get_drawing_or_404(db: Session, current_user: User, drawing_id: int) -> Drawing:
+    drawing = _scope_drawing_query(db, current_user).filter(Drawing.id == drawing_id).first()
+    if not drawing:
+        raise HTTPException(status_code=404, detail="Drawing not found")
+    return drawing
+
+
 def _normalize_element_type(raw_type: str) -> ElementType | None:
     normalized = (raw_type or "").strip().lower()
     mapping = {
@@ -256,15 +334,24 @@ def _serialize_drawing_element(element: DrawingElement) -> dict:
 
 # Project endpoints
 @router.get("/monitors/{user_id}/projects", response_model=List[ProjectResponse])
-def get_projects(user_id: int, db: Session = Depends(get_db)):
-    return db.query(Project).filter(
+def get_projects(user_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if current_user.role == UserRole.CONTRACTOR:
+        return _scope_project_query(db, current_user).filter(
+            Project.is_deleted == False,
+        ).distinct().order_by(Project.id.asc()).all()
+    if current_user.role == UserRole.MONITOR and user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return _scope_project_query(db, current_user).filter(
         Project.user_id == user_id,
         Project.is_deleted == False,
-    ).all()
+    ).order_by(Project.id.asc()).all()
 
 @router.post("/projects", response_model=ProjectResponse)
 def create_project(project: ProjectCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    db_project = Project(**project.model_dump())
+    if current_user.role == UserRole.CONTRACTOR:
+        raise HTTPException(status_code=403, detail="Contractors cannot create projects.")
+    project_owner_id = current_user.id if current_user.role == UserRole.MONITOR else project.user_id
+    db_project = Project(name=project.name, user_id=project_owner_id)
     db.add(db_project)
     db.commit()
     db.refresh(db_project)
@@ -272,12 +359,9 @@ def create_project(project: ProjectCreate, db: Session = Depends(get_db), curren
 
 @router.patch("/projects/{project_id}", response_model=ProjectResponse)
 def update_project(project_id: int, payload: ProjectUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.is_deleted == False,
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    if current_user.role == UserRole.CONTRACTOR:
+        raise HTTPException(status_code=403, detail="Contractors cannot edit projects.")
+    project = _get_project_or_404(db, current_user, project_id)
     project.name = payload.name.strip()
     db.commit()
     db.refresh(project)
@@ -285,32 +369,33 @@ def update_project(project_id: int, payload: ProjectUpdate, db: Session = Depend
 
 @router.delete("/projects/{project_id}")
 def delete_project(project_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.is_deleted == False,
-    ).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    if current_user.role == UserRole.CONTRACTOR:
+        raise HTTPException(status_code=403, detail="Contractors cannot delete projects.")
+    project = _get_project_or_404(db, current_user, project_id)
     project.is_deleted = True
     db.commit()
     return {"status": "success", "project_id": project_id}
 
 # Package endpoints
 @router.get("/projects/{project_id}/packages", response_model=List[PackageResponse])
-def get_packages(project_id: int, db: Session = Depends(get_db)):
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.is_deleted == False,
-    ).first()
-    if not project:
+def get_packages(project_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    try:
+        _get_project_or_404(db, current_user, project_id)
+    except HTTPException as exc:
+        if exc.status_code != 404:
+            raise
         return []
-    return db.query(Package).filter(
+    return _scope_package_query(db, current_user).filter(
         Package.project_id == project_id,
         Package.is_deleted == False,
-    ).all()
+        Project.is_deleted == False,
+    ).order_by(Package.id.asc()).all()
 
 @router.post("/packages", response_model=PackageResponse)
 def create_package(package: PackageCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if current_user.role == UserRole.CONTRACTOR:
+        raise HTTPException(status_code=403, detail="Contractors cannot create packages.")
+    _get_project_or_404(db, current_user, package.project_id)
     db_package = Package(**package.model_dump())
     db.add(db_package)
     db.commit()
@@ -319,13 +404,9 @@ def create_package(package: PackageCreate, db: Session = Depends(get_db), curren
 
 @router.patch("/packages/{package_id}", response_model=PackageResponse)
 def update_package(package_id: int, payload: PackageUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    package = db.query(Package).join(Project, Package.project_id == Project.id).filter(
-        Package.id == package_id,
-        Package.is_deleted == False,
-        Project.is_deleted == False,
-    ).first()
-    if not package:
-        raise HTTPException(status_code=404, detail="Package not found")
+    if current_user.role == UserRole.CONTRACTOR:
+        raise HTTPException(status_code=403, detail="Contractors cannot edit packages.")
+    package = _get_package_or_404(db, current_user, package_id)
     package.name = payload.name.strip()
     db.commit()
     db.refresh(package)
@@ -333,34 +414,34 @@ def update_package(package_id: int, payload: PackageUpdate, db: Session = Depend
 
 @router.delete("/packages/{package_id}")
 def delete_package(package_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    package = db.query(Package).join(Project, Package.project_id == Project.id).filter(
-        Package.id == package_id,
-        Package.is_deleted == False,
-        Project.is_deleted == False,
-    ).first()
-    if not package:
-        raise HTTPException(status_code=404, detail="Package not found")
+    if current_user.role == UserRole.CONTRACTOR:
+        raise HTTPException(status_code=403, detail="Contractors cannot delete packages.")
+    package = _get_package_or_404(db, current_user, package_id)
     package.is_deleted = True
     db.commit()
     return {"status": "success", "package_id": package_id}
 
 # Structure endpoints
 @router.get("/packages/{package_id}/structures", response_model=List[StructureResponse])
-def get_structures(package_id: int, db: Session = Depends(get_db)):
-    package = db.query(Package).join(Project, Package.project_id == Project.id).filter(
-        Package.id == package_id,
-        Package.is_deleted == False,
-        Project.is_deleted == False,
-    ).first()
-    if not package:
+def get_structures(package_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    try:
+        _get_package_or_404(db, current_user, package_id)
+    except HTTPException as exc:
+        if exc.status_code != 404:
+            raise
         return []
-    return db.query(Structure).filter(
+    return _scope_structure_query(db, current_user).filter(
         Structure.package_id == package_id,
         Structure.is_deleted == False,
-    ).all()
+        Package.is_deleted == False,
+        Project.is_deleted == False,
+    ).order_by(Structure.id.asc()).all()
 
 @router.post("/structures", response_model=StructureResponse)
 def create_structure(structure: StructureCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if current_user.role == UserRole.CONTRACTOR:
+        raise HTTPException(status_code=403, detail="Contractors cannot create structures.")
+    _get_package_or_404(db, current_user, structure.package_id)
     db_structure = Structure(**structure.model_dump())
     db.add(db_structure)
     db.commit()
@@ -369,14 +450,9 @@ def create_structure(structure: StructureCreate, db: Session = Depends(get_db), 
 
 @router.patch("/structures/{structure_id}", response_model=StructureResponse)
 def update_structure(structure_id: int, payload: StructureUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    structure = db.query(Structure).join(Package, Structure.package_id == Package.id).join(Project, Package.project_id == Project.id).filter(
-        Structure.id == structure_id,
-        Structure.is_deleted == False,
-        Package.is_deleted == False,
-        Project.is_deleted == False,
-    ).first()
-    if not structure:
-        raise HTTPException(status_code=404, detail="Structure not found")
+    if current_user.role == UserRole.CONTRACTOR:
+        raise HTTPException(status_code=403, detail="Contractors cannot edit structures.")
+    structure = _get_structure_or_404(db, current_user, structure_id)
     structure.name = payload.name.strip()
     db.commit()
     db.refresh(structure)
@@ -384,23 +460,18 @@ def update_structure(structure_id: int, payload: StructureUpdate, db: Session = 
 
 @router.delete("/structures/{structure_id}")
 def delete_structure(structure_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    structure = db.query(Structure).join(Package, Structure.package_id == Package.id).join(Project, Package.project_id == Project.id).filter(
-        Structure.id == structure_id,
-        Structure.is_deleted == False,
-        Package.is_deleted == False,
-        Project.is_deleted == False,
-    ).first()
-    if not structure:
-        raise HTTPException(status_code=404, detail="Structure not found")
+    if current_user.role == UserRole.CONTRACTOR:
+        raise HTTPException(status_code=403, detail="Contractors cannot delete structures.")
+    structure = _get_structure_or_404(db, current_user, structure_id)
     structure.is_deleted = True
     db.commit()
     return {"status": "success", "structure_id": structure_id}
 
 @router.put("/structures/{structure_id}/assign")
 def assign_contractor(structure_id: int, contractor_id: int | None = Query(None), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    db_structure = db.query(Structure).filter(Structure.id == structure_id).first()
-    if not db_structure:
-        raise HTTPException(status_code=404, detail="Structure not found")
+    if current_user.role == UserRole.CONTRACTOR:
+        raise HTTPException(status_code=403, detail="Contractors cannot manage structure assignments.")
+    db_structure = _get_structure_or_404(db, current_user, structure_id)
     
     db_structure.contractor_id = contractor_id
     db.commit()
@@ -410,10 +481,12 @@ def assign_contractor(structure_id: int, contractor_id: int | None = Query(None)
 # Drawing endpoints
 @router.get("/structures/{structure_id}/drawings", response_model=List[DrawingResponse])
 def get_drawings(structure_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    return db.query(Drawing).filter(Drawing.structure_id == structure_id).all()
+    _get_structure_or_404(db, current_user, structure_id)
+    return _scope_drawing_query(db, current_user).filter(Drawing.structure_id == structure_id).order_by(Drawing.id.asc()).all()
 
 @router.post("/drawings", response_model=DrawingResponse)
 def create_drawing(drawing: DrawingCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    _get_structure_or_404(db, current_user, drawing.structure_id)
     db_drawing = Drawing(**drawing.model_dump())
     db.add(db_drawing)
     db.commit()
@@ -423,9 +496,7 @@ def create_drawing(drawing: DrawingCreate, db: Session = Depends(get_db), curren
 
 @router.patch("/drawings/{drawing_id}", response_model=DrawingResponse)
 def update_drawing(drawing_id: int, payload: DrawingUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    drawing = db.query(Drawing).filter(Drawing.id == drawing_id).first()
-    if not drawing:
-        raise HTTPException(status_code=404, detail="Drawing not found")
+    drawing = _get_drawing_or_404(db, current_user, drawing_id)
 
     drawing.name = payload.name.strip()
     db.commit()
@@ -435,9 +506,7 @@ def update_drawing(drawing_id: int, payload: DrawingUpdate, db: Session = Depend
 
 @router.delete("/drawings/{drawing_id}")
 def delete_drawing(drawing_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    drawing = db.query(Drawing).filter(Drawing.id == drawing_id).first()
-    if not drawing:
-        raise HTTPException(status_code=404, detail="Drawing not found")
+    drawing = _get_drawing_or_404(db, current_user, drawing_id)
 
     file_path = drawing.file_path
     converted_dxf_path = None
@@ -480,9 +549,7 @@ def delete_drawing(drawing_id: int, db: Session = Depends(get_db), current_user:
 
 @router.get("/drawings/{drawing_id}/pages")
 def get_drawing_pages(drawing_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    drawing = db.query(Drawing).filter(Drawing.id == drawing_id).first()
-    if not drawing:
-        raise HTTPException(status_code=404, detail="Drawing not found")
+    drawing = _get_drawing_or_404(db, current_user, drawing_id)
 
     if drawing.file_path and not os.path.exists(drawing.file_path):
         raise HTTPException(status_code=400, detail="Drawing file not found on server.")
@@ -506,9 +573,7 @@ def create_blank_drawing_page(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    drawing = db.query(Drawing).filter(Drawing.id == drawing_id).first()
-    if not drawing:
-        raise HTTPException(status_code=404, detail="Drawing not found")
+    drawing = _get_drawing_or_404(db, current_user, drawing_id)
 
     if drawing.file_path and not os.path.exists(drawing.file_path):
         raise HTTPException(status_code=400, detail="Drawing file not found on server.")
@@ -552,9 +617,7 @@ def create_page_calibration(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    drawing = db.query(Drawing).filter(Drawing.id == drawing_id).first()
-    if not drawing:
-        raise HTTPException(status_code=404, detail="Drawing not found")
+    drawing = _get_drawing_or_404(db, current_user, drawing_id)
 
     page = _get_page_or_404(db, drawing_id, page_ref)
     normalized_unit = unit.strip().lower()
@@ -597,9 +660,7 @@ def create_page_calibration(
 
 @router.get("/drawings/{drawing_id}/canvas-data")
 def get_drawing_canvas_data(drawing_id: int, page_id: str | None = None, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    drawing = db.query(Drawing).filter(Drawing.id == drawing_id).first()
-    if not drawing:
-        raise HTTPException(status_code=404, detail="Drawing not found")
+    drawing = _get_drawing_or_404(db, current_user, drawing_id)
 
     active_dxf_path = _resolve_drawing_dxf_path(drawing)
     if not os.path.exists(active_dxf_path):
@@ -617,9 +678,7 @@ def get_drawing_canvas_data(drawing_id: int, page_id: str | None = None, db: Ses
 
 @router.get("/drawings/{drawing_id}/file")
 def get_drawing_file(drawing_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    drawing = db.query(Drawing).filter(Drawing.id == drawing_id).first()
-    if not drawing:
-        raise HTTPException(status_code=404, detail="Drawing not found")
+    drawing = _get_drawing_or_404(db, current_user, drawing_id)
     if not drawing.file_path:
         raise HTTPException(status_code=400, detail="This drawing does not have a source file.")
 
@@ -641,9 +700,7 @@ def create_blank_drawing(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    structure = db.query(Structure).filter(Structure.id == structure_id).first()
-    if not structure:
-        raise HTTPException(status_code=404, detail="Structure not found")
+    structure = _get_structure_or_404(db, current_user, structure_id)
 
     drawing_name = name.strip()
     if not drawing_name:
@@ -686,9 +743,7 @@ def delete_drawing_page(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    drawing = db.query(Drawing).filter(Drawing.id == drawing_id).first()
-    if not drawing:
-        raise HTTPException(status_code=404, detail="Drawing not found")
+    drawing = _get_drawing_or_404(db, current_user, drawing_id)
 
     page = _get_page_or_404(db, drawing_id, page_ref)
 
@@ -705,9 +760,7 @@ def get_drawing_annotations(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    drawing = db.query(Drawing).filter(Drawing.id == drawing_id).first()
-    if not drawing:
-        raise HTTPException(status_code=404, detail="Drawing not found")
+    drawing = _get_drawing_or_404(db, current_user, drawing_id)
 
     page = _get_page_or_404(db, drawing_id, page_id)
     elements = db.query(DrawingElement).filter(
@@ -730,9 +783,7 @@ def save_drawing_annotations(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    drawing = db.query(Drawing).filter(Drawing.id == drawing_id).first()
-    if not drawing:
-        raise HTTPException(status_code=404, detail="Drawing not found")
+    drawing = _get_drawing_or_404(db, current_user, drawing_id)
     page = _get_page_or_404(db, drawing_id, page_id)
 
     try:
@@ -791,9 +842,7 @@ def update_drawing_annotation(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    drawing = db.query(Drawing).filter(Drawing.id == drawing_id).first()
-    if not drawing:
-        raise HTTPException(status_code=404, detail="Drawing not found")
+    drawing = _get_drawing_or_404(db, current_user, drawing_id)
     page = _get_page_or_404(db, drawing_id, page_id)
     element = db.query(DrawingElement).filter(
         DrawingElement.id == element_id,
@@ -833,9 +882,7 @@ def delete_drawing_annotations(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    drawing = db.query(Drawing).filter(Drawing.id == drawing_id).first()
-    if not drawing:
-        raise HTTPException(status_code=404, detail="Drawing not found")
+    drawing = _get_drawing_or_404(db, current_user, drawing_id)
     page = _get_page_or_404(db, drawing_id, page_id)
 
     try:
@@ -921,30 +968,18 @@ async def upload_managed_drawing(
 
     resolved_structure_id = structure_id
     if create_structure:
+        if current_user.role == UserRole.CONTRACTOR:
+            raise HTTPException(status_code=403, detail="Contractors cannot create structures.")
         if not project_id or not package_id or not (structure_name or "").strip():
             raise HTTPException(status_code=400, detail="Project, package, and structure name are required.")
 
-        package = db.query(Package).join(Project, Package.project_id == Project.id).filter(
-            Package.id == package_id,
-            Package.project_id == project_id,
-            Package.is_deleted == False,
-            Project.is_deleted == False,
-            Project.user_id == current_user.id,
-        ).first()
-        if not package:
+        package = _get_package_or_404(db, current_user, package_id)
+        if package.project_id != project_id:
             raise HTTPException(status_code=404, detail="Package not found.")
     else:
         if not resolved_structure_id:
             raise HTTPException(status_code=400, detail="Structure selection is required.")
-        structure = db.query(Structure).join(Package, Structure.package_id == Package.id).join(Project, Package.project_id == Project.id).filter(
-            Structure.id == resolved_structure_id,
-            Structure.is_deleted == False,
-            Package.is_deleted == False,
-            Project.is_deleted == False,
-            Project.user_id == current_user.id,
-        ).first()
-        if not structure:
-            raise HTTPException(status_code=404, detail="Structure not found.")
+        _get_structure_or_404(db, current_user, resolved_structure_id)
 
     upload_dir = "uploads"
     if not os.path.exists(upload_dir):
@@ -996,9 +1031,7 @@ async def upload_managed_drawing(
 
 @router.post("/drawings/{drawing_id}/parse")
 def parse_drawing(drawing_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    drawing = db.query(Drawing).filter(Drawing.id == drawing_id).first()
-    if not drawing:
-        raise HTTPException(status_code=404, detail="Drawing not found")
+    drawing = _get_drawing_or_404(db, current_user, drawing_id)
     
     # Path to the DXF file (assuming it's stored in a standard location)
     # For now, we use the sample path as a placeholder if file_path is not set

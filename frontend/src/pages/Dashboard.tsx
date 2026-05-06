@@ -110,6 +110,7 @@ export default function Dashboard() {
   const [presentationElementId, setPresentationElementId] = useState<string | null>(null);
   const currentUser = authService.getCurrentUser();
   const isMonitor = currentUser?.role === 'monitor';
+  const isContractor = currentUser?.role === 'contractor';
   const selectedStructure = useMemo(
     () => structures.find((structure) => structure.id === selectedStructureId) || null,
     [structures, selectedStructureId],
@@ -331,7 +332,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {isMonitor && (
+      {isMonitor && !isContractor && (
         <div className="mt-8 grid grid-cols-1 gap-6 2xl:grid-cols-[1.1fr_0.9fr]">
           <div className="rounded-[28px] border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-200 bg-slate-50 px-6 py-5">
