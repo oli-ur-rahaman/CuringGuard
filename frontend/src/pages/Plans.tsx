@@ -32,6 +32,7 @@ import {
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { authService, hierarchyService, libraryService, progressService } from '../services/api';
+import ElementPresentationOverlay from '../components/ElementPresentationOverlay';
 
 GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
@@ -390,6 +391,7 @@ export default function Plans() {
     offsetX: 0,
     offsetY: 0,
   });
+  const [presentationElementId, setPresentationElementId] = useState<string | null>(null);
   const [selectionStart, setSelectionStart] = useState<Point | null>(null);
   const [selectionBox, setSelectionBox] = useState<SelectionBox | null>(null);
   const [selectionToggleMode, setSelectionToggleMode] = useState(false);
@@ -803,6 +805,7 @@ export default function Plans() {
   useEffect(() => {
     if (singleSelectedAnnotation) {
       setSelectedInfoClosed(false);
+      setSelectedInfoHovered(false);
     }
   }, [singleSelectedAnnotation?.id]);
 
@@ -1333,6 +1336,7 @@ export default function Plans() {
   };
 
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    updateMouseTracking(e);
     const pagePoint = pagePointFromEvent(e.clientX, e.clientY);
     if (isPanning) {
       setIsPanning(false);
@@ -1943,6 +1947,7 @@ export default function Plans() {
         onPointerLeave={() => {
           setMouseViewport((current) => ({ ...current, visible: false }));
           setIsPanning(false);
+          setSelectedInfoHovered(false);
         }}
         onContextMenu={(e) => e.preventDefault()}
         style={{ touchAction: 'none' }}
@@ -2032,7 +2037,18 @@ export default function Plans() {
               </div>
               <button
                 type="button"
-                onClick={() => setSelectedInfoClosed(true)}
+                onClick={() => setPresentationElementId(singleSelectedAnnotation.id)}
+                className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                title="Presentation"
+              >
+                <ScanSearch className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedInfoClosed(true);
+                  setSelectedInfoHovered(false);
+                }}
                 className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
                 title="Close"
               >
@@ -2627,6 +2643,12 @@ export default function Plans() {
           </div>
         </div>
       )}
+
+      <ElementPresentationOverlay
+        open={!!presentationElementId}
+        drawingElementId={presentationElementId}
+        onClose={() => setPresentationElementId(null)}
+      />
 
       {toolModalOpen && (
         <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/35">
