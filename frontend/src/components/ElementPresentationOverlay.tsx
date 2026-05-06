@@ -149,6 +149,13 @@ const formatDateTimeLabel = (value?: string | null) => {
   }).toUpperCase();
 };
 
+const localIsoDate = (input = new Date()) => {
+  const year = input.getFullYear();
+  const month = String(input.getMonth() + 1).padStart(2, '0');
+  const day = String(input.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 const annotationBounds = (annotation: Annotation) => {
   const xs = annotation.points.map((point) => point.x);
   const ys = annotation.points.map((point) => point.y);
@@ -338,7 +345,7 @@ export default function ElementPresentationOverlay({ drawingElementId, open, onC
     });
   };
 
-  const currentDateIso = new Date().toISOString().slice(0, 10);
+  const currentDateIso = localIsoDate();
 
   const timelineLabel = (day: PresentationDay) => {
     if (day.date > currentDateIso) return 'Upcoming';

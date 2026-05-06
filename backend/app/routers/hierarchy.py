@@ -311,8 +311,8 @@ def _apply_curing_fields(db: Session, drawing_element: DrawingElement, payload: 
     drawing_element.curing_duration_days = resolved_duration
     drawing_element.curing_start_date = start_date
     drawing_element.curing_end_date = (
-        start_date + timedelta(days=resolved_duration)
-        if start_date and isinstance(resolved_duration, int)
+        start_date + timedelta(days=max(resolved_duration - 1, 0))
+        if start_date and isinstance(resolved_duration, int) and resolved_duration > 0
         else None
     )
 

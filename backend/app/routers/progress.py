@@ -76,12 +76,16 @@ def _load_latest_progress_map(db: Session, element_ids: List[str]):
 
 
 def _build_progress_row_payload(drawing_element, drawing_page, drawing, structure, latest_progress_by_day: dict[str, CuringProgressEntry], today_key: str):
-    total_days = drawing_element.curing_duration_days or max((drawing_element.curing_end_date - drawing_element.curing_start_date).days, 0)
+    total_days = drawing_element.curing_duration_days or max((drawing_element.curing_end_date - drawing_element.curing_start_date).days + 1, 1)
     elapsed_days = 0
-    if drawing_element.curing_start_date:
-        elapsed_days = max((min(date.today(), drawing_element.curing_end_date) - drawing_element.curing_start_date).days, 0) if drawing_element.curing_end_date else max((date.today() - drawing_element.curing_start_date).days, 0)
-        if total_days:
-            elapsed_days = min(elapsed_days, total_days)
+    if drawing_element.curing_start_date and drawing_element.curing_end_date:
+        today = date.today()
+        if today < drawing_element.curing_start_date:
+            elapsed_days = 0
+        elif today > drawing_element.curing_end_date:
+            elapsed_days = total_days
+        else:
+            elapsed_days = max((today - drawing_element.curing_start_date).days + 1, 1)
     is_completed = bool(drawing_element.curing_end_date and date.today() > drawing_element.curing_end_date)
     today_entry = latest_progress_by_day.get(today_key)
     return {
@@ -133,8 +137,8 @@ def _presentation_window_dates(drawing_element: DrawingElement) -> list[date]:
     if isinstance(total_days, int) and total_days > 0:
         return [drawing_element.curing_start_date + timedelta(days=index) for index in range(total_days)]
     if drawing_element.curing_end_date and drawing_element.curing_end_date >= drawing_element.curing_start_date:
-        delta_days = max((drawing_element.curing_end_date - drawing_element.curing_start_date).days, 0)
-        return [drawing_element.curing_start_date + timedelta(days=index) for index in range(max(delta_days, 1))]
+        delta_days = max((drawing_element.curing_end_date - drawing_element.curing_start_date).days + 1, 1)
+        return [drawing_element.curing_start_date + timedelta(days=index) for index in range(delta_days)]
     return [drawing_element.curing_start_date]
 
 
@@ -408,7 +412,7 @@ def get_presentation_payload(
             "entries": day_entries,
         })
 
-    total_days = drawing_element.curing_duration_days or max((drawing_element.curing_end_date - drawing_element.curing_start_date).days, 0)
+    total_days = drawing_element.curing_duration_days or max((drawing_element.curing_end_date - drawing_element.curing_start_date).days + 1, 1)
     is_completed = bool(drawing_element.curing_end_date and today > drawing_element.curing_end_date)
 
     return {

@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
+from datetime import timedelta
 import os
 from sqlalchemy import inspect, text
 
@@ -354,6 +355,23 @@ def ensure_runtime_schema():
     if "curing_end_date" not in drawing_element_columns:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE drawing_elements ADD COLUMN curing_end_date DATE NULL"))
+
+    if {"curing_start_date", "curing_duration_days", "curing_end_date"}.issubset(drawing_element_columns):
+        with engine.begin() as connection:
+            rows = connection.execute(text("""
+                SELECT id, curing_start_date, curing_duration_days, curing_end_date
+                FROM drawing_elements
+                WHERE curing_start_date IS NOT NULL
+                  AND curing_duration_days IS NOT NULL
+                  AND curing_duration_days > 0
+            """)).mappings().all()
+            for row in rows:
+                normalized_end_date = row["curing_start_date"] + timedelta(days=max(int(row["curing_duration_days"]) - 1, 0))
+                if row["curing_end_date"] != normalized_end_date:
+                    connection.execute(
+                        text("UPDATE drawing_elements SET curing_end_date = :curing_end_date WHERE id = :element_id"),
+                        {"element_id": row["id"], "curing_end_date": normalized_end_date},
+                    )
 
     if "created_by_monitor_id" not in user_columns:
         with engine.begin() as connection:

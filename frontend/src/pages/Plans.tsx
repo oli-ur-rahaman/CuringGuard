@@ -219,6 +219,20 @@ const formatDisplayDate = (value?: string) => {
   }).toUpperCase();
 };
 
+const localIsoDate = (input = new Date()) => {
+  const year = input.getFullYear();
+  const month = String(input.getMonth() + 1).padStart(2, '0');
+  const day = String(input.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const addDaysToIso = (isoDate: string, days: number) => {
+  const [year, month, day] = isoDate.split('-').map(Number);
+  const value = new Date(year, (month || 1) - 1, day || 1);
+  value.setDate(value.getDate() + days);
+  return localIsoDate(value);
+};
+
 const calibrationPixelLength = (calibration: CalibrationRecord) => {
   const [start, end] = calibration.points;
   return Math.hypot(end.x - start.x, end.y - start.y);
@@ -1540,7 +1554,7 @@ export default function Plans() {
       const nextStartDate = patch.curingStartDate ?? annotation.curingStartDate ?? '';
       const fallbackDuration = activeRuleMap[nextElementType.trim().toLowerCase()] ?? annotation.curingDurationDays ?? null;
       const nextEndDate = nextStartDate && typeof fallbackDuration === 'number'
-        ? new Date(new Date(`${nextStartDate}T00:00:00`).getTime() + fallbackDuration * 86400000).toISOString().slice(0, 10)
+        ? addDaysToIso(nextStartDate, Math.max(fallbackDuration - 1, 0))
         : '';
       return {
         ...annotation,
@@ -1904,7 +1918,7 @@ export default function Plans() {
     if (!singleSelectedAnnotation) return null;
     if (singleSelectedProgress) return singleSelectedProgress.today_status === 'added' ? 'Added Today' : 'Pending Today';
     if (!singleSelectedAnnotation.curingStartDate || !singleSelectedAnnotation.curingEndDate) return 'Not Scheduled';
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localIsoDate();
     if (today < singleSelectedAnnotation.curingStartDate) return 'Upcoming';
     if (today > singleSelectedAnnotation.curingEndDate) return 'Completed';
     return 'Pending Today';
@@ -1914,11 +1928,10 @@ export default function Plans() {
     if (!singleSelectedAnnotation?.curingStartDate || !singleSelectedAnnotation?.curingEndDate) return [];
     const startDate = new Date(`${singleSelectedAnnotation.curingStartDate}T00:00:00`);
     const endDate = new Date(`${singleSelectedAnnotation.curingEndDate}T00:00:00`);
-    const totalDays = Math.max(Math.round((endDate.getTime() - startDate.getTime()) / 86400000), 0);
+    const totalDays = Math.max(Math.round((endDate.getTime() - startDate.getTime()) / 86400000) + 1, 1);
     return Array.from({ length: totalDays }, (_, index) => {
-      const dayDate = new Date(startDate.getTime() + index * 86400000);
-      const dayKey = dayDate.toISOString().slice(0, 10);
-      const todayKey = new Date().toISOString().slice(0, 10);
+      const dayKey = addDaysToIso(singleSelectedAnnotation.curingStartDate!, index);
+      const todayKey = localIsoDate();
       const progressDay = singleSelectedProgress?.gantt_days.find((entry) => entry.date === dayKey);
       const isToday = dayKey === todayKey;
       const isPast = dayKey < todayKey;

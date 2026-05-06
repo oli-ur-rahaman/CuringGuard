@@ -44,7 +44,21 @@ const formatShortDate = (value: string) => {
   return parsed.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toUpperCase();
 };
 
-const isoToday = () => new Date().toISOString().slice(0, 10);
+const localIsoDate = (input = new Date()) => {
+  const year = input.getFullYear();
+  const month = String(input.getMonth() + 1).padStart(2, '0');
+  const day = String(input.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const addDaysToIso = (isoDate: string, days: number) => {
+  const [year, month, day] = isoDate.split('-').map(Number);
+  const value = new Date(year, (month || 1) - 1, day || 1);
+  value.setDate(value.getDate() + days);
+  return localIsoDate(value);
+};
+
+const isoToday = () => localIsoDate();
 
 async function validateMediaFiles(files: File[]) {
   for (const file of files) {
@@ -95,7 +109,7 @@ function GanttBar({ row }: { row: ProgressRow }) {
       <div className="relative h-10 overflow-hidden rounded-xl border border-slate-300 bg-white">
         <div className="flex h-full">
           {Array.from({ length: totalDays }).map((_, index) => {
-            const cellDate = new Date(startDate.getTime() + index * 86400000).toISOString().slice(0, 10);
+            const cellDate = addDaysToIso(row.start_date, index);
             const hasPositiveProgress = progressMap.get(cellDate) === true;
             return (
               <div

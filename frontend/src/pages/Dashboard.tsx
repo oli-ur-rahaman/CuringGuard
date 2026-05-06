@@ -54,12 +54,26 @@ const formatShortDate = (value: string) => {
   return parsed.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toUpperCase();
 };
 
+const localIsoDate = (input = new Date()) => {
+  const year = input.getFullYear();
+  const month = String(input.getMonth() + 1).padStart(2, '0');
+  const day = String(input.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const addDaysToIso = (isoDate: string, days: number) => {
+  const [year, month, day] = isoDate.split('-').map(Number);
+  const value = new Date(year, (month || 1) - 1, day || 1);
+  value.setDate(value.getDate() + days);
+  return localIsoDate(value);
+};
+
 function GanttBar({ row }: { row: ActiveRow }) {
   const totalDays = Math.max(row.total_days || 0, 1);
   const progressMap = new Map(row.gantt_days.map((entry) => [entry.date, entry.did_cure_today]));
   const startDate = new Date(`${row.start_date}T00:00:00`);
   const today = new Date();
-  const todayIso = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())).toISOString().slice(0, 10);
+  const todayIso = localIsoDate(today);
   const markerDate = new Date(`${todayIso}T00:00:00`);
   const todayOffset = Math.max(Math.min(Math.floor((markerDate.getTime() - startDate.getTime()) / 86400000), totalDays - 1), 0);
 
@@ -72,7 +86,7 @@ function GanttBar({ row }: { row: ActiveRow }) {
       <div className="relative h-10 overflow-hidden rounded-xl border border-slate-300 bg-white">
         <div className="flex h-full">
           {Array.from({ length: totalDays }).map((_, index) => {
-            const cellDate = new Date(startDate.getTime() + index * 86400000).toISOString().slice(0, 10);
+            const cellDate = addDaysToIso(row.start_date, index);
             const hasPositiveProgress = progressMap.get(cellDate) === true;
             return (
               <div
