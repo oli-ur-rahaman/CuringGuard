@@ -31,7 +31,7 @@ import {
 } from 'lucide-react';
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-import { authService, hierarchyService, libraryService } from '../services/api';
+import { authService, hierarchyService, libraryService, progressService } from '../services/api';
 
 GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
@@ -68,6 +68,25 @@ type Annotation = {
   curingDurationDays?: number | null;
   curingStartDate?: string;
   curingEndDate?: string;
+};
+type ProgressRowInfo = {
+  drawing_element_id: string;
+  structure_id: number;
+  structure_name: string;
+  plan_name: string;
+  page_name: string;
+  element_name: string;
+  start_date: string;
+  end_date: string;
+  total_days: number;
+  elapsed_days: number;
+  is_completed: boolean;
+  today_status: 'added' | 'pending';
+  gantt_days: Array<{
+    date: string;
+    did_cure_today: boolean;
+    entry_id: number;
+  }>;
 };
 type CuringRuleRecord = {
   id: number;
@@ -348,6 +367,7 @@ export default function Plans() {
   const [imageObjectUrl, setImageObjectUrl] = useState<string | null>(null);
   const [pageThumbnails, setPageThumbnails] = useState<Record<string, string>>({});
   const [annotationsByPage, setAnnotationsByPage] = useState<Record<string, Annotation[]>>({});
+  const [progressRowByElementId, setProgressRowByElementId] = useState<Record<string, ProgressRowInfo>>({});
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [curingRules, setCuringRules] = useState<CuringRuleRecord[]>([]);
   const [elementSort, setElementSort] = useState<{ key: ElementSortKey; direction: 'asc' | 'desc' }>({
@@ -362,6 +382,14 @@ export default function Plans() {
   const [mouseViewport, setMouseViewport] = useState({ x: 0, y: 0, visible: false });
   const [mousePage, setMousePage] = useState<Point>({ x: 0, y: 0 });
   const [cursorContrastColor, setCursorContrastColor] = useState<'black' | 'white'>('black');
+  const [selectedInfoPosition, setSelectedInfoPosition] = useState({ x: 116, y: 118 });
+  const [selectedInfoClosed, setSelectedInfoClosed] = useState(false);
+  const [selectedInfoHovered, setSelectedInfoHovered] = useState(false);
+  const [selectedInfoDrag, setSelectedInfoDrag] = useState<{ active: boolean; offsetX: number; offsetY: number }>({
+    active: false,
+    offsetX: 0,
+    offsetY: 0,
+  });
   const [selectionStart, setSelectionStart] = useState<Point | null>(null);
   const [selectionBox, setSelectionBox] = useState<SelectionBox | null>(null);
   const [selectionToggleMode, setSelectionToggleMode] = useState(false);
@@ -394,6 +422,8 @@ export default function Plans() {
 
   const currentAnnotations = annotationsByPage[activePageId] || [];
   const selectedAnnotations = currentAnnotations.filter((annotation) => selectedIds.includes(annotation.id));
+  const singleSelectedAnnotation = selectedAnnotations.length === 1 ? selectedAnnotations[0] : null;
+  const singleSelectedProgress = singleSelectedAnnotation ? progressRowByElementId[singleSelectedAnnotation.id] : null;
   const filteredPackages = packages.filter((pkg) => pkg.project_id === selectedUploadProjectId);
   const activeRuleMap = curingRules.reduce<Record<string, number>>((acc, rule) => {
     if (!rule.is_active) return acc;
@@ -448,6 +478,41 @@ export default function Plans() {
     }
   };
 
+  const refreshProgressRows = async () => {
+    try {
+      const response = await progressService.getRows();
+      const nextMap: Record<string, ProgressRowInfo> = {};
+      (response?.structures || []).forEach((group: any) => {
+        (group.rows || []).forEach((row: ProgressRowInfo) => {
+          nextMap[row.drawing_element_id] = row;
+        });
+      });
+      setProgressRowByElementId(nextMap);
+      return nextMap;
+    } catch (error) {
+      console.error('Failed to load progress rows', error);
+      return {};
+    }
+  };
+
+  const getNextCopyColor = (sourceColor: string) => {
+    const currentIndex = COLOR_SWATCHES.findIndex((color) => color.toLowerCase() === sourceColor.toLowerCase());
+    if (currentIndex >= 0) {
+      return COLOR_SWATCHES[(currentIndex + 1) % COLOR_SWATCHES.length];
+    }
+    return COLOR_SWATCHES[0];
+  };
+
+  const cloneAnnotation = (annotation: Annotation): Annotation => ({
+    ...annotation,
+    id: typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `copy-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    memberName: `${annotation.memberName || annotation.elementType} copy`,
+    color: getNextCopyColor(annotation.color),
+    points: annotation.points.map((point) => ({ x: point.x + 18, y: point.y + 18 })),
+  });
+
   const resetInlineElementDraft = (geometryType: string) => {
     setInlineElementDraft({ element_name: '', description: '', required_curing_days: '', geometry_type: geometryType });
   };
@@ -490,6 +555,7 @@ export default function Plans() {
       if (response.annotations) {
         setAnnotationsForPage(pageId, response.annotations);
       }
+      void refreshProgressRows();
       setSaveState('saved');
       window.setTimeout(() => setSaveState('idle'), 900);
     } catch (error) {
@@ -731,6 +797,16 @@ export default function Plans() {
   }, []);
 
   useEffect(() => {
+    void refreshProgressRows();
+  }, []);
+
+  useEffect(() => {
+    if (singleSelectedAnnotation) {
+      setSelectedInfoClosed(false);
+    }
+  }, [singleSelectedAnnotation?.id]);
+
+  useEffect(() => {
     const syncFullscreenState = () => {
       setIsFullscreen(document.fullscreenElement === planRootRef.current);
     };
@@ -738,6 +814,27 @@ export default function Plans() {
     document.addEventListener('fullscreenchange', syncFullscreenState);
     return () => document.removeEventListener('fullscreenchange', syncFullscreenState);
   }, []);
+
+  useEffect(() => {
+    if (!selectedInfoDrag.active) return;
+    const handlePointerMove = (event: PointerEvent) => {
+      const viewport = viewportRef.current;
+      if (!viewport) return;
+      const rect = viewport.getBoundingClientRect();
+      const nextX = clamp(event.clientX - selectedInfoDrag.offsetX, 16, rect.width - 300);
+      const nextY = clamp(event.clientY - selectedInfoDrag.offsetY, 16, rect.height - 110);
+      setSelectedInfoPosition({ x: nextX, y: nextY });
+    };
+    const handlePointerUp = () => {
+      setSelectedInfoDrag((current) => ({ ...current, active: false }));
+    };
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+    };
+  }, [selectedInfoDrag]);
 
   useEffect(() => {
     const fetchPagesAndAsset = async () => {
@@ -1332,6 +1429,35 @@ export default function Plans() {
     }
   };
 
+  const handleRenameActiveDrawing = async (drawingId: number, currentName: string) => {
+    const name = window.prompt('Rename plan/file', currentName);
+    if (!name || !name.trim() || name.trim() === currentName) return;
+    try {
+      await hierarchyService.updateDrawing(drawingId, { name: name.trim() });
+      setExplorerGroups((current) => current.map((group) => ({
+        ...group,
+        drawings: group.drawings.map((drawing) => drawing.id === drawingId ? { ...drawing, name: name.trim() } : drawing),
+      })));
+      if (activeDrawingId === drawingId) setActiveDrawingName(name.trim());
+    } catch (error: any) {
+      alert(error.response?.data?.detail || 'Failed to rename plan.');
+    }
+  };
+
+  const handleRenamePage = async (pageId: string, currentName: string) => {
+    if (!activeDrawingId) return;
+    const name = window.prompt('Rename page', currentName);
+    if (!name || !name.trim() || name.trim() === currentName) return;
+    try {
+      const response = await hierarchyService.updateDrawingPage(activeDrawingId, pageId, name.trim());
+      const updatedPage = response.page as PageRecord;
+      setPages((current) => current.map((page) => page.id === updatedPage.id ? { ...page, ...updatedPage } : page));
+      if (activePageId === updatedPage.id) setActivePageName(updatedPage.name);
+    } catch (error: any) {
+      alert(error.response?.data?.detail || 'Failed to rename page.');
+    }
+  };
+
   const handleDeleteSelectedElements = async () => {
     if (!activeDrawingId || !activePageId || selectedIds.length === 0) return;
     const confirmed = window.confirm(`Delete ${selectedIds.length} selected element${selectedIds.length > 1 ? 's' : ''}?`);
@@ -1345,6 +1471,27 @@ export default function Plans() {
     } catch (error: any) {
       alert(error.response?.data?.detail || 'Failed to delete selected elements.');
     }
+  };
+
+  const handleCopySelectedElements = async () => {
+    if (!activePageId || selectedAnnotations.length === 0) return;
+    const copies = selectedAnnotations.map(cloneAnnotation);
+    const nextAnnotations = [...currentAnnotations, ...copies];
+    setAnnotationsForPage(activePageId, nextAnnotations);
+    setSelectedIds(copies.map((annotation) => annotation.id));
+    await persistAnnotations(activePageId, nextAnnotations);
+  };
+
+  const handleSelectedInfoPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    event.stopPropagation();
+    const target = event.target as HTMLElement;
+    if (target.closest('button')) return;
+    event.preventDefault();
+    setSelectedInfoDrag({
+      active: true,
+      offsetX: event.clientX - selectedInfoPosition.x,
+      offsetY: event.clientY - selectedInfoPosition.y,
+    });
   };
 
   const handleOpenEditSelectedElements = () => {
@@ -1413,6 +1560,7 @@ export default function Plans() {
       setAnnotationsForPage(activePageId, optimistic.map((annotation) => (
         annotation.id === elementId ? updated : annotation
       )));
+      void refreshProgressRows();
     } catch (error: any) {
       await reloadCurrentPageAnnotations(activeDrawingId, activePageId, { preserveSelection: true });
       alert(error.response?.data?.detail || 'Failed to update element.');
@@ -1748,6 +1896,37 @@ export default function Plans() {
     return <img src={thumbnail} alt={page.name} className="h-full w-full rounded-xl object-contain bg-white" />;
   };
 
+  const selectedElementTodayLabel = (() => {
+    if (!singleSelectedAnnotation) return null;
+    if (singleSelectedProgress) return singleSelectedProgress.today_status === 'added' ? 'Added Today' : 'Pending Today';
+    if (!singleSelectedAnnotation.curingStartDate || !singleSelectedAnnotation.curingEndDate) return 'Not Scheduled';
+    const today = new Date().toISOString().slice(0, 10);
+    if (today < singleSelectedAnnotation.curingStartDate) return 'Upcoming';
+    if (today > singleSelectedAnnotation.curingEndDate) return 'Completed';
+    return 'Pending Today';
+  })();
+
+  const selectedElementTimeline = (() => {
+    if (!singleSelectedAnnotation?.curingStartDate || !singleSelectedAnnotation?.curingEndDate) return [];
+    const startDate = new Date(`${singleSelectedAnnotation.curingStartDate}T00:00:00`);
+    const endDate = new Date(`${singleSelectedAnnotation.curingEndDate}T00:00:00`);
+    const totalDays = Math.max(Math.round((endDate.getTime() - startDate.getTime()) / 86400000), 0);
+    return Array.from({ length: totalDays }, (_, index) => {
+      const dayDate = new Date(startDate.getTime() + index * 86400000);
+      const dayKey = dayDate.toISOString().slice(0, 10);
+      const todayKey = new Date().toISOString().slice(0, 10);
+      const progressDay = singleSelectedProgress?.gantt_days.find((entry) => entry.date === dayKey);
+      const isToday = dayKey === todayKey;
+      const isPast = dayKey < todayKey;
+      let tone = 'upcoming';
+      if (progressDay?.did_cure_today) tone = 'cured';
+      else if (isPast) tone = 'missed';
+      else if (isToday) tone = 'pending';
+      return { dayKey, isToday, tone };
+    });
+  })();
+  const isSelectedElementScheduled = Boolean(singleSelectedAnnotation?.curingStartDate && singleSelectedAnnotation?.curingEndDate);
+
   return (
     <div
       ref={planRootRef}
@@ -1820,7 +1999,83 @@ export default function Plans() {
           </svg>
         </div>
 
-        {mouseViewport.visible && (
+        {singleSelectedAnnotation && !selectedInfoClosed && (
+          <div
+            className={`absolute z-20 w-[312px] rounded-[22px] border border-slate-200 bg-white/96 px-4 py-3 shadow-xl backdrop-blur ${selectedInfoDrag.active ? 'cursor-grabbing' : 'cursor-default'}`}
+            style={{ left: selectedInfoPosition.x, top: selectedInfoPosition.y }}
+            onPointerDown={handleSelectedInfoPointerDown}
+            onPointerEnter={() => setSelectedInfoHovered(true)}
+            onPointerLeave={() => setSelectedInfoHovered(false)}
+            onClick={(event) => event.stopPropagation()}
+            onDoubleClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <div className="truncate text-[28px] font-black leading-none tracking-tight text-slate-900">
+                    {singleSelectedAnnotation.memberName || singleSelectedAnnotation.elementType}
+                  </div>
+                  {isSelectedElementScheduled && (
+                    <span className={`rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] ${
+                      selectedElementTodayLabel === 'Added Today'
+                        ? 'bg-emerald-100 text-emerald-700'
+                        : selectedElementTodayLabel === 'Completed'
+                          ? 'bg-slate-200 text-slate-600'
+                          : selectedElementTodayLabel === 'Upcoming'
+                            ? 'bg-blue-100 text-blue-700'
+                            : 'bg-red-100 text-red-700'
+                    }`}>
+                      {selectedElementTodayLabel}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedInfoClosed(true)}
+                className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                title="Close"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            {isSelectedElementScheduled ? (
+              <>
+                <div className="mt-3 flex items-center justify-between text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+                  <span>{formatDisplayDate(singleSelectedAnnotation.curingStartDate)}</span>
+                  <span>{formatDisplayDate(singleSelectedAnnotation.curingEndDate)}</span>
+                </div>
+                <div className="mt-3 flex gap-1 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 p-1.5">
+                  {selectedElementTimeline.length > 0 ? (
+                    selectedElementTimeline.map((day) => (
+                      <div
+                        key={day.dayKey}
+                        className={`h-6 min-w-0 flex-1 rounded-md border ${
+                          day.isToday
+                            ? 'border-slate-900 bg-white'
+                            : day.tone === 'cured'
+                              ? 'border-emerald-100 bg-emerald-200'
+                              : day.tone === 'missed' || day.tone === 'pending'
+                                ? 'border-red-100 bg-red-200'
+                                : 'border-slate-200 bg-white'
+                        }`}
+                        title={day.dayKey}
+                      />
+                    ))
+                  ) : (
+                    <div className="w-full py-2 text-center text-xs font-bold text-slate-400">No gantt data</div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="mt-3 text-sm font-black uppercase tracking-[0.18em] text-slate-400">
+                Not Scheduled
+              </div>
+            )}
+          </div>
+        )}
+
+        {mouseViewport.visible && !selectedInfoHovered && (
           <>
             <div className={`pointer-events-none absolute left-0 right-0 z-30 h-px ${cursorContrastColor === 'black' ? 'bg-black' : 'bg-white'}`} style={{ top: mouseViewport.y }} />
             <div className={`pointer-events-none absolute top-0 bottom-0 z-30 w-px ${cursorContrastColor === 'black' ? 'bg-black' : 'bg-white'}`} style={{ left: mouseViewport.x }} />
@@ -1999,7 +2254,20 @@ export default function Plans() {
                           <FileText className="h-4 w-4 flex-shrink-0" />
                           <span className="truncate">{drawing.name}</span>
                         </div>
-                        {activeDrawingId === drawing.id && <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] text-blue-700">ACTIVE</span>}
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void handleRenameActiveDrawing(drawing.id, drawing.name);
+                            }}
+                            className="rounded-lg p-1 text-slate-400 transition-colors hover:bg-white hover:text-slate-700"
+                            title="Rename plan"
+                          >
+                            <PenSquare className="h-3.5 w-3.5" />
+                          </button>
+                          {activeDrawingId === drawing.id && <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] text-blue-700">ACTIVE</span>}
+                        </div>
                       </button>
                     )) : (
                       <div className="px-3 py-3 text-xs font-black text-slate-400">No plans under this structure.</div>
@@ -2062,6 +2330,15 @@ export default function Plans() {
               tabIndex={-1}
               onChange={(event) => void handleApplyStartDateToSelected(event.target.value)}
             />
+            <button
+              onClick={() => void handleCopySelectedElements()}
+              disabled={selectedIds.length === 0}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black uppercase tracking-[0.16em] text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40"
+              type="button"
+            >
+              <Plus className="h-4 w-4" />
+              Copy
+            </button>
             <button
               onClick={() => {
                 const input = bulkStartDateInputRef.current;
@@ -2189,6 +2466,17 @@ export default function Plans() {
                 onClick={() => setActivePageId(page.id)}
                 className={`${thumbnailHover ? 'w-40' : 'w-[92px]'} relative flex-shrink-0 rounded-2xl border p-2.5 text-left transition-all ${activePageId === page.id ? 'border-blue-500 bg-blue-500/10 shadow-[0_0_20px_rgba(37,99,235,0.18)]' : 'border-slate-800 bg-slate-900 hover:border-slate-700'} ${thumbnailHover ? 'h-[160px]' : 'h-[68px]'}`}
               >
+                <span
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void handleRenamePage(page.id, page.name);
+                  }}
+                  className="absolute right-8 top-2 z-10 flex h-5 w-5 items-center justify-center rounded-full border border-slate-700 bg-slate-950/90 text-slate-300 transition-colors hover:border-blue-500 hover:text-blue-400"
+                  role="button"
+                  tabIndex={0}
+                >
+                  <PenSquare className="h-3 w-3" />
+                </span>
                 <span
                   onClick={(e) => {
                     e.stopPropagation();

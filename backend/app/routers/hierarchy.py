@@ -604,6 +604,29 @@ def create_blank_drawing_page(
     }
 
 
+@router.patch("/drawings/{drawing_id}/pages/{page_ref:path}")
+def update_drawing_page(
+    drawing_id: int,
+    page_ref: str,
+    name: str = Form(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _get_drawing_or_404(db, current_user, drawing_id)
+    page = _get_page_or_404(db, drawing_id, page_ref)
+    page_name = name.strip()
+    if not page_name:
+        raise HTTPException(status_code=400, detail="Page name is required.")
+    page.name = page_name
+    db.commit()
+    db.refresh(page)
+    return {
+        "status": "success",
+        "drawing_id": drawing_id,
+        "page": _page_payload(page, db),
+    }
+
+
 @router.post("/drawings/{drawing_id}/pages/{page_ref:path}/calibrations")
 def create_page_calibration(
     drawing_id: int,

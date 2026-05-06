@@ -164,6 +164,55 @@ def _serialize_presentation_element(element: DrawingElement):
     }
 
 
+def _build_presentation_navigation(db: Session, current_user: User, current_element: DrawingElement):
+    today = date.today()
+    if not current_element.curing_start_date or not current_element.curing_end_date:
+        return {
+            "enabled": False,
+            "current_position": None,
+            "total": 0,
+            "previous_element_id": None,
+            "next_element_id": None,
+        }
+    if not (current_element.curing_start_date <= today <= current_element.curing_end_date):
+        return {
+            "enabled": False,
+            "current_position": None,
+            "total": 0,
+            "previous_element_id": None,
+            "next_element_id": None,
+        }
+
+    active_rows = _scoped_element_query(db, current_user).filter(
+        DrawingElement.curing_start_date <= today,
+        DrawingElement.curing_end_date >= today,
+    ).order_by(
+        Structure.name.asc(),
+        Drawing.name.asc(),
+        DrawingPage.sort_order.asc(),
+        DrawingElement.member_name.asc(),
+        DrawingElement.id.asc(),
+    ).all()
+    active_ids = [drawing_element.id for drawing_element, *_ in active_rows]
+    if current_element.id not in active_ids:
+        return {
+            "enabled": False,
+            "current_position": None,
+            "total": len(active_ids),
+            "previous_element_id": None,
+            "next_element_id": None,
+        }
+
+    current_index = active_ids.index(current_element.id)
+    return {
+        "enabled": len(active_ids) > 1,
+        "current_position": current_index + 1,
+        "total": len(active_ids),
+        "previous_element_id": active_ids[current_index - 1] if current_index > 0 else None,
+        "next_element_id": active_ids[current_index + 1] if current_index < len(active_ids) - 1 else None,
+    }
+
+
 def _get_system_setting(db: Session):
     rows = db.execute(
         text("""
@@ -293,6 +342,7 @@ def get_presentation_payload(
     current_user: User = Depends(get_current_user),
 ):
     drawing_element, drawing_page, drawing, structure, package, project = _assert_can_access_progress_element(db, current_user, drawing_element_id)
+    navigation = _build_presentation_navigation(db, current_user, drawing_element)
 
     entries = (
         db.query(CuringProgressEntry)
@@ -379,6 +429,7 @@ def get_presentation_payload(
         "missed_days_count": missed_days_count,
         "is_completed": is_completed,
         "element_annotation": _serialize_presentation_element(drawing_element),
+        "navigation": navigation,
         "timeline_days": timeline_days,
     }
 

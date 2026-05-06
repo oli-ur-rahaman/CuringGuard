@@ -79,6 +79,13 @@ type PresentationPayload = {
   missed_days_count: number;
   is_completed: boolean;
   element_annotation: Annotation;
+  navigation?: {
+    enabled: boolean;
+    current_position: number | null;
+    total: number;
+    previous_element_id: string | null;
+    next_element_id: string | null;
+  };
   timeline_days: PresentationDay[];
 };
 
@@ -232,6 +239,7 @@ export default function ElementPresentationOverlay({ drawingElementId, open, onC
   const timelineRailRef = useRef<HTMLDivElement | null>(null);
   const mediaOverlayRef = useRef<HTMLDivElement | null>(null);
   const [loading, setLoading] = useState(false);
+  const [currentElementId, setCurrentElementId] = useState<string | null>(drawingElementId);
   const [payload, setPayload] = useState<PresentationPayload | null>(null);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [pdfDocument, setPdfDocument] = useState<any>(null);
@@ -271,6 +279,7 @@ export default function ElementPresentationOverlay({ drawingElementId, open, onC
   const currentEntry = selectedDay?.entries[activeEntryIndex] || null;
   const currentMedia = currentMediaItem?.media || null;
   const currentMediaUrl = currentMedia ? mediaUrlMap[currentMedia.media_id] : null;
+  const navigation = payload?.navigation;
 
   const cleanupObjectUrls = () => {
     objectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
@@ -366,7 +375,12 @@ export default function ElementPresentationOverlay({ drawingElementId, open, onC
   }, []);
 
   useEffect(() => {
-    if (!open || !drawingElementId) return;
+    if (!open) return;
+    setCurrentElementId(drawingElementId);
+  }, [open, drawingElementId]);
+
+  useEffect(() => {
+    if (!open || !currentElementId) return;
     let active = true;
     const load = async () => {
       try {
@@ -382,7 +396,7 @@ export default function ElementPresentationOverlay({ drawingElementId, open, onC
           }
         }
         setPdfDocument(null);
-        const presentation = await progressService.getPresentation(drawingElementId);
+        const presentation = await progressService.getPresentation(currentElementId);
         const [annotationResponse, fileBlob] = await Promise.all([
           hierarchyService.getDrawingAnnotations(presentation.drawing_id, presentation.page_id),
           presentation.drawing_asset_kind === 'blank' ? Promise.resolve(null) : hierarchyService.getDrawingFile(presentation.drawing_id),
@@ -427,7 +441,7 @@ export default function ElementPresentationOverlay({ drawingElementId, open, onC
     return () => {
       active = false;
     };
-  }, [open, drawingElementId]);
+  }, [open, currentElementId]);
 
   useEffect(() => {
     if (!open || !overlayRef.current) return;
@@ -577,6 +591,31 @@ export default function ElementPresentationOverlay({ drawingElementId, open, onC
             </div>
           </div>
           <div className="flex items-center gap-3">
+            {navigation?.enabled && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => navigation.previous_element_id && setCurrentElementId(navigation.previous_element_id)}
+                  disabled={!navigation.previous_element_id}
+                  className="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+                  title="Previous active element"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <span className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-black text-slate-700">
+                  {`${navigation.current_position} of ${navigation.total} active`}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => navigation.next_element_id && setCurrentElementId(navigation.next_element_id)}
+                  disabled={!navigation.next_element_id}
+                  className="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+                  title="Next active element"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </>
+            )}
             {selectedDay && <span className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-black text-slate-700">{formatDateLabel(selectedDay.date)}</span>}
             {selectedDay && <span className={`rounded-xl border px-3 py-2 text-sm font-black ${dayStatusClasses(selectedDay.day_status)}`}>{dayStatusLabel(selectedDay.day_status)}</span>}
             {payload && <span className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-black text-amber-700">{`Missed: ${payload.missed_days_count} day${payload.missed_days_count === 1 ? '' : 's'}`}</span>}

@@ -112,6 +112,16 @@ export const hierarchyService = {
     const response = await api.get(`/hierarchy/drawings/${drawingId}/pages`);
     return response.data;
   },
+  updateDrawingPage: async (drawingId: number, pageId: string, name: string) => {
+    const formData = new FormData();
+    formData.append('name', name);
+    const response = await api.patch(`/hierarchy/drawings/${drawingId}/pages/${encodeURIComponent(pageId)}`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+    return response.data;
+  },
   getDrawingFile: async (drawingId: number) => {
     const response = await api.get(`/hierarchy/drawings/${drawingId}/file`, {
       responseType: 'blob',
@@ -297,6 +307,10 @@ export const hierarchyService = {
 export const userService = {
   getUsers: async (tenantId?: number, role?: string) => {
     const response = await api.get('/users/', { params: { tenant_id: tenantId, role } });
+    return response.data;
+  },
+  getContractorMetrics: async () => {
+    const response = await api.get('/users/contractors/metrics');
     return response.data;
   },
   getMe: async () => {

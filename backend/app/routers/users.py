@@ -1,11 +1,14 @@
+from datetime import date
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import distinct, func
 from sqlalchemy.orm import Session
 from typing import List
 
 from backend.app.core.auth import get_current_user, get_password_hash
 from backend.app.core.database import get_db
-from backend.app.models.curing import CustomElement, DefaultElement
+from backend.app.models.curing import CuringProgressEntry, CustomElement, DefaultElement, DrawingElement
+from backend.app.models.hierarchy import Drawing, Package, Project, Structure
 from backend.app.models.system import SystemSetting
 from backend.app.models.users import User, UserRole
 from backend.app.schemas.users import UserCreate, UserResponse
@@ -51,6 +54,93 @@ def get_users(role: str = None, db: Session = Depends(get_db), current_user: Use
     if role:
         query = query.filter(User.role == role)
     return query.order_by(User.id.asc()).all()
+
+
+@router.get("/contractors/metrics")
+def get_contractor_metrics(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if current_user.role != UserRole.MONITOR:
+        raise HTTPException(status_code=403, detail="Unauthorized access.")
+
+    contractors = db.query(User.id).filter(
+        User.role == UserRole.CONTRACTOR,
+        User.created_by_monitor_id == current_user.id,
+    ).all()
+    contractor_ids = [contractor_id for (contractor_id,) in contractors]
+    if not contractor_ids:
+        return {"metrics": []}
+
+    structure_rows = db.query(Structure.id, Structure.contractor_id).join(
+        Package, Structure.package_id == Package.id
+    ).join(
+        Project, Package.project_id == Project.id
+    ).filter(
+        Project.user_id == current_user.id,
+        Project.is_deleted == False,
+        Package.is_deleted == False,
+        Structure.is_deleted == False,
+        Structure.contractor_id.in_(contractor_ids),
+    ).all()
+
+    structures_by_contractor: dict[int, list[int]] = {}
+    for structure_id, contractor_id in structure_rows:
+        structures_by_contractor.setdefault(contractor_id, []).append(structure_id)
+
+    scheduled_rows = db.query(
+        Structure.contractor_id,
+        func.count(DrawingElement.id),
+    ).join(
+        Drawing, Drawing.structure_id == Structure.id
+    ).join(
+        DrawingElement, DrawingElement.drawing_id == Drawing.id
+    ).join(
+        Package, Structure.package_id == Package.id
+    ).join(
+        Project, Package.project_id == Project.id
+    ).filter(
+        Project.user_id == current_user.id,
+        Project.is_deleted == False,
+        Package.is_deleted == False,
+        Structure.is_deleted == False,
+        Structure.contractor_id.in_(contractor_ids),
+        DrawingElement.curing_start_date != None,
+    ).group_by(Structure.contractor_id).all()
+    scheduled_map = {contractor_id: count for contractor_id, count in scheduled_rows}
+
+    posted_today_rows = db.query(
+        Structure.contractor_id,
+        func.count(distinct(CuringProgressEntry.drawing_element_id)),
+    ).join(
+        Drawing, Drawing.structure_id == Structure.id
+    ).join(
+        DrawingElement, DrawingElement.drawing_id == Drawing.id
+    ).join(
+        CuringProgressEntry, CuringProgressEntry.drawing_element_id == DrawingElement.id
+    ).join(
+        Package, Structure.package_id == Package.id
+    ).join(
+        Project, Package.project_id == Project.id
+    ).filter(
+        Project.user_id == current_user.id,
+        Project.is_deleted == False,
+        Package.is_deleted == False,
+        Structure.is_deleted == False,
+        Structure.contractor_id.in_(contractor_ids),
+        CuringProgressEntry.user_id == Structure.contractor_id,
+        CuringProgressEntry.progress_date == date.today(),
+    ).group_by(Structure.contractor_id).all()
+    posted_today_map = {contractor_id: count for contractor_id, count in posted_today_rows}
+
+    return {
+        "metrics": [
+            {
+                "contractor_id": contractor_id,
+                "structures_count": len(structures_by_contractor.get(contractor_id, [])),
+                "scheduled_elements_count": int(scheduled_map.get(contractor_id, 0) or 0),
+                "posted_today_count": int(posted_today_map.get(contractor_id, 0) or 0),
+            }
+            for contractor_id in contractor_ids
+        ]
+    }
 
 
 @router.get("/check-email")

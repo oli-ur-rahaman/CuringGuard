@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { Ban, CheckCircle2, KeyRound, Loader2, Phone, Plus, SquarePen, Users, X } from 'lucide-react';
-import { authService, curingService, hierarchyService, userService } from '../services/api';
+import { authService, hierarchyService, userService } from '../services/api';
 
 type ContractorRecord = {
   id: number;
@@ -11,7 +11,7 @@ type ContractorRecord = {
   mobile_number: string;
   is_active: boolean | number;
   structuresCount?: number;
-  curableElementsCount?: number;
+  curableElementsCount?: string;
 };
 
 type ContractorFormState = {
@@ -56,11 +56,14 @@ export default function Contractors() {
         setContractors([]);
         return;
       }
-      const [users, projects, elements] = await Promise.all([
+      const [users, projects, metricsResponse] = await Promise.all([
         userService.getUsers(undefined, 'contractor'),
         hierarchyService.getProjects(monitorUserId),
-        curingService.getElements(),
+        userService.getContractorMetrics(),
       ]);
+      const metricsByContractor = new Map<number, { structures_count: number; scheduled_elements_count: number; posted_today_count: number }>(
+        (metricsResponse?.metrics || []).map((metric: any) => [metric.contractor_id, metric]),
+      );
 
       const packageLists = await Promise.all(projects.map((project: any) => hierarchyService.getPackages(project.id)));
       const packages = packageLists.flat();
@@ -69,8 +72,12 @@ export default function Contractors() {
 
       const contractorsWithCounts = users.map((contractor: ContractorRecord) => ({
         ...contractor,
-        structuresCount: structures.filter((structure: any) => structure.contractor_id === contractor.id).length,
-        curableElementsCount: elements.filter((element: any) => element.contractor_id === contractor.id).length,
+        structuresCount: metricsByContractor.get(contractor.id)?.structures_count ?? structures.filter((structure: any) => structure.contractor_id === contractor.id).length,
+        curableElementsCount: (() => {
+          const metrics = metricsByContractor.get(contractor.id);
+          if (!metrics) return '0/0';
+          return `${metrics.posted_today_count}/${metrics.scheduled_elements_count}`;
+        })(),
       }));
 
       setContractors(contractorsWithCounts);
@@ -303,7 +310,7 @@ export default function Contractors() {
                       {contractor.structuresCount ?? 0}
                     </td>
                     <td className="p-6 align-top text-sm font-extrabold text-slate-700">
-                      {contractor.curableElementsCount ?? 0}
+                      {contractor.curableElementsCount ?? '0/0'}
                     </td>
                     <td className="p-6 pr-8 align-top">
                       <div className="flex flex-wrap items-center justify-end gap-2">
