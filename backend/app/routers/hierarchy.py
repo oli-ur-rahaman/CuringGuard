@@ -12,7 +12,15 @@ from backend.app.core.database import get_db
 from backend.app.core.auth import get_current_user, get_password_hash
 from backend.app.models.users import User, UserRole
 from backend.app.models.hierarchy import Project, Package, Structure, Drawing, DrawingPage
-from backend.app.models.curing import GeometryElement, ElementType, DrawingElement, CustomElement, DefaultElement
+from backend.app.models.curing import (
+    GeometryElement,
+    ElementType,
+    DrawingElement,
+    CustomElement,
+    DefaultElement,
+    CuringProgressEntry,
+    CuringProgressMedia,
+)
 from backend.app.services.geometry_service import GeometryService
 from backend.app.services.pdf_service import PdfService
 from backend.app.schemas.hierarchy import (
@@ -331,6 +339,24 @@ def _serialize_drawing_element(element: DrawingElement) -> dict:
         "curingStartDate": element.curing_start_date.isoformat() if element.curing_start_date else "",
         "curingEndDate": element.curing_end_date.isoformat() if element.curing_end_date else "",
     }
+
+
+def _delete_element_progress(db: Session, element_ids: list[str]):
+    if not element_ids:
+        return
+    progress_entry_ids = [
+        row[0]
+        for row in db.query(CuringProgressEntry.id).filter(
+            CuringProgressEntry.drawing_element_id.in_(element_ids)
+        ).all()
+    ]
+    if progress_entry_ids:
+        db.query(CuringProgressMedia).filter(
+            CuringProgressMedia.progress_entry_id.in_(progress_entry_ids)
+        ).delete(synchronize_session=False)
+        db.query(CuringProgressEntry).filter(
+            CuringProgressEntry.id.in_(progress_entry_ids)
+        ).delete(synchronize_session=False)
 
 # Project endpoints
 @router.get("/monitors/{user_id}/projects", response_model=List[ProjectResponse])
@@ -770,6 +796,11 @@ def delete_drawing_page(
 
     page = _get_page_or_404(db, drawing_id, page_ref)
 
+    page_element_ids = [
+        row[0]
+        for row in db.query(DrawingElement.id).filter(DrawingElement.drawing_page_id == page.id).all()
+    ]
+    _delete_element_progress(db, page_element_ids)
     db.query(DrawingElement).filter(DrawingElement.drawing_page_id == page.id).delete(synchronize_session=False)
     page.is_deleted = True
     db.commit()
@@ -817,27 +848,49 @@ def save_drawing_annotations(
     if not isinstance(parsed_annotations, list):
         raise HTTPException(status_code=400, detail="Annotations payload must be a list.")
 
-    db.query(DrawingElement).filter(
+    existing_elements = db.query(DrawingElement).filter(
         DrawingElement.drawing_id == drawing_id,
         DrawingElement.drawing_page_id == page.id,
-    ).delete(synchronize_session=False)
+    ).all()
+    existing_by_id = {element.id: element for element in existing_elements}
+    seen_ids: set[str] = set()
+
     for annotation in parsed_annotations:
         points = annotation.get("points", [])
         if not isinstance(points, list):
             continue
-        drawing_element = DrawingElement(
-            id=(annotation.get("id") or uuid.uuid4().hex),
-            drawing_id=drawing_id,
-            drawing_page_id=page.id,
-            annotation_type=(annotation.get("type") or "rect"),
-            member_name=annotation.get("memberName") or "",
-            color=(annotation.get("color") or "#3b82f6"),
-            point_shape=(annotation.get("pointShape") or "circle") if (annotation.get("type") or "rect") == "point" else None,
-            is_hidden=bool(annotation.get("isHidden", False)),
-            coordinates_json=json.dumps(points),
-        )
+        element_id = annotation.get("id") or uuid.uuid4().hex
+        seen_ids.add(element_id)
+        drawing_element = existing_by_id.get(element_id)
+        if drawing_element is None:
+            drawing_element = DrawingElement(
+                id=element_id,
+                drawing_id=drawing_id,
+                drawing_page_id=page.id,
+                annotation_type=(annotation.get("type") or "rect"),
+                member_name=annotation.get("memberName") or "",
+                color=(annotation.get("color") or "#3b82f6"),
+                point_shape=(annotation.get("pointShape") or "circle") if (annotation.get("type") or "rect") == "point" else None,
+                is_hidden=bool(annotation.get("isHidden", False)),
+                coordinates_json=json.dumps(points),
+            )
+            db.add(drawing_element)
+        drawing_element.annotation_type = annotation.get("type") or "rect"
+        drawing_element.member_name = annotation.get("memberName") or ""
+        drawing_element.color = annotation.get("color") or "#3b82f6"
+        drawing_element.point_shape = (annotation.get("pointShape") or "circle") if (annotation.get("type") or "rect") == "point" else None
+        drawing_element.is_hidden = bool(annotation.get("isHidden", False))
+        drawing_element.coordinates_json = json.dumps(points)
         _apply_curing_fields(db, drawing_element, annotation, current_user.id if current_user.role == UserRole.MONITOR else None)
-        db.add(drawing_element)
+
+    removed_ids = [element.id for element in existing_elements if element.id not in seen_ids]
+    if removed_ids:
+        _delete_element_progress(db, removed_ids)
+        db.query(DrawingElement).filter(
+            DrawingElement.drawing_id == drawing_id,
+            DrawingElement.drawing_page_id == page.id,
+            DrawingElement.id.in_(removed_ids),
+        ).delete(synchronize_session=False)
     db.commit()
     elements = db.query(DrawingElement).filter(
         DrawingElement.drawing_id == drawing_id,
@@ -916,6 +969,7 @@ def delete_drawing_annotations(
     if not isinstance(parsed_ids, list) or not all(isinstance(item, str) for item in parsed_ids):
         raise HTTPException(status_code=400, detail="element_ids must be a JSON array of strings.")
 
+    _delete_element_progress(db, parsed_ids)
     deleted_count = db.query(DrawingElement).filter(
         DrawingElement.drawing_id == drawing_id,
         DrawingElement.drawing_page_id == page.id,

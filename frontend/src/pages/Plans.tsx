@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
+  Camera,
   CheckSquare2,
   ChevronDown,
   DraftingCompass,
@@ -26,13 +27,15 @@ import {
   Square,
   Trash2,
   Triangle,
+  Upload,
+  Video,
   X,
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-import { authService, hierarchyService, libraryService, progressService } from '../services/api';
+import { authService, hierarchyService, libraryService, progressService, systemService } from '../services/api';
 import ElementPresentationOverlay from '../components/ElementPresentationOverlay';
 
 GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
@@ -89,6 +92,13 @@ type ProgressRowInfo = {
     did_cure_today: boolean;
     entry_id: number;
   }>;
+};
+type ProgressMediaItem = {
+  file: File;
+  source: 'manual' | 'camera-photo' | 'camera-video';
+  capturedAt?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
 };
 type CuringRuleRecord = {
   id: number;
@@ -234,6 +244,42 @@ const addDaysToIso = (isoDate: string, days: number) => {
   return localIsoDate(value);
 };
 
+const isoToday = () => localIsoDate();
+const ALLOWED_IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/bmp', 'image/gif'];
+
+async function validateMediaFiles(files: File[]) {
+  for (const file of files) {
+    if (file.type.startsWith('image/')) {
+      if (!ALLOWED_IMAGE_MIME_TYPES.includes(file.type)) {
+        throw new Error(`Unsupported image format for "${file.name}". Use JPG, PNG, WEBP, BMP, or GIF.`);
+      }
+      continue;
+    }
+    if (file.type.startsWith('video/')) {
+      const duration = await new Promise<number>((resolve, reject) => {
+        const video = document.createElement('video');
+        const objectUrl = URL.createObjectURL(file);
+        video.preload = 'metadata';
+        video.onloadedmetadata = () => {
+          const durationSeconds = video.duration;
+          URL.revokeObjectURL(objectUrl);
+          resolve(durationSeconds);
+        };
+        video.onerror = () => {
+          URL.revokeObjectURL(objectUrl);
+          reject(new Error(`Unable to read video duration for ${file.name}`));
+        };
+        video.src = objectUrl;
+      });
+      if (duration > 120) {
+        throw new Error(`Video "${file.name}" is longer than 2 minutes.`);
+      }
+      continue;
+    }
+    throw new Error(`Unsupported file type for "${file.name}". Only image and video files are allowed.`);
+  }
+}
+
 const calibrationPixelLength = (calibration: CalibrationRecord) => {
   const [start, end] = calibration.points;
   return Math.hypot(end.x - start.x, end.y - start.y);
@@ -249,6 +295,14 @@ const resolveCalibrationForPage = (pages: PageRecord[], activePageId: string) =>
   }
   return null;
 };
+
+const pointsMatch = (left: Point[] = [], right: Point[] = []) => (
+  left.length === right.length
+  && left.every((point, index) => {
+    const other = right[index];
+    return !!other && point.x === other.x && point.y === other.y;
+  })
+);
 
 const calibratedPixels = (calibration: CalibrationRecord | null, desired: { ft: number; in: number; m: number; mm: number }) => {
   if (!calibration || !calibration.value) return null;
@@ -407,6 +461,19 @@ export default function Plans() {
     offsetY: 0,
   });
   const [presentationElementId, setPresentationElementId] = useState<string | null>(null);
+  const [progressTargetAnnotation, setProgressTargetAnnotation] = useState<Annotation | null>(null);
+  const [progressDidCureToday, setProgressDidCureToday] = useState<'yes' | 'no'>('yes');
+  const [progressRemark, setProgressRemark] = useState('');
+  const [progressMediaFiles, setProgressMediaFiles] = useState<ProgressMediaItem[]>([]);
+  const [progressSubmitting, setProgressSubmitting] = useState(false);
+  const [manualFileEntryEnabled, setManualFileEntryEnabled] = useState(true);
+  const [serverTimeOffsetHours, setServerTimeOffsetHours] = useState(0);
+  const [serverNowUtc, setServerNowUtc] = useState<string | null>(null);
+  const [progressCameraModalOpen, setProgressCameraModalOpen] = useState(false);
+  const [progressCameraMode, setProgressCameraMode] = useState<'photo' | 'video'>('photo');
+  const [progressCameraError, setProgressCameraError] = useState('');
+  const [progressCameraLoading, setProgressCameraLoading] = useState(false);
+  const [progressRecording, setProgressRecording] = useState(false);
   const [selectionStart, setSelectionStart] = useState<Point | null>(null);
   const [selectionBox, setSelectionBox] = useState<SelectionBox | null>(null);
   const [selectionToggleMode, setSelectionToggleMode] = useState(false);
@@ -432,6 +499,13 @@ export default function Plans() {
   const thumbnailRailRef = useRef<HTMLDivElement>(null);
   const dateInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const bulkStartDateInputRef = useRef<HTMLInputElement | null>(null);
+  const selectedInfoStartDateInputRef = useRef<HTMLInputElement | null>(null);
+  const progressUploadInputRef = useRef<HTMLInputElement | null>(null);
+  const progressLiveVideoRef = useRef<HTMLVideoElement | null>(null);
+  const progressStreamRef = useRef<MediaStream | null>(null);
+  const progressMediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const progressMediaChunksRef = useRef<Blob[]>([]);
+  const progressDiscardCameraResultRef = useRef(false);
   const restoredViewportKeyRef = useRef('');
   const workspaceRestoreReadyRef = useRef(false);
   const viewportRestoreAppliedRef = useRef(false);
@@ -530,6 +604,321 @@ export default function Plans() {
     points: annotation.points.map((point) => ({ x: point.x, y: point.y })),
   });
 
+  const stopProgressCameraSession = () => {
+    if (progressMediaRecorderRef.current && progressMediaRecorderRef.current.state !== 'inactive') {
+      progressMediaRecorderRef.current.stop();
+    }
+    progressStreamRef.current?.getTracks().forEach((track) => track.stop());
+    progressStreamRef.current = null;
+    progressMediaRecorderRef.current = null;
+    progressMediaChunksRef.current = [];
+    if (progressLiveVideoRef.current) {
+      progressLiveVideoRef.current.srcObject = null;
+    }
+    setProgressRecording(false);
+    setProgressCameraLoading(false);
+  };
+
+  const getCurrentCaptureLocation = async () => {
+    if (!navigator.geolocation) {
+      return { latitude: null, longitude: null, timestamp: null };
+    }
+    return new Promise<{ latitude: number | null; longitude: number | null; timestamp: number | null }>((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          resolve({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            timestamp: position.timestamp,
+          });
+        },
+        () => resolve({ latitude: null, longitude: null, timestamp: null }),
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
+      );
+    });
+  };
+
+  const formatOffsetTimestamp = (baseUtcMs: number, offsetHours: number) => {
+    const shifted = new Date(baseUtcMs + offsetHours * 3600000);
+    const year = shifted.getUTCFullYear();
+    const month = String(shifted.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(shifted.getUTCDate()).padStart(2, '0');
+    const hours = String(shifted.getUTCHours()).padStart(2, '0');
+    const minutes = String(shifted.getUTCMinutes()).padStart(2, '0');
+    const seconds = String(shifted.getUTCSeconds()).padStart(2, '0');
+    const sign = offsetHours >= 0 ? '+' : '-';
+    const absHours = String(Math.abs(offsetHours)).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}${sign}${absHours}:00`;
+  };
+
+  const resolveFallbackTimestamp = () => {
+    const greenwichPlusSix = formatOffsetTimestamp(Date.now(), 6);
+    if (greenwichPlusSix) return greenwichPlusSix;
+    if (serverNowUtc) {
+      const parsedServerNow = Date.parse(serverNowUtc);
+      if (!Number.isNaN(parsedServerNow)) {
+        return formatOffsetTimestamp(parsedServerNow, serverTimeOffsetHours);
+      }
+    }
+    return new Date().toISOString();
+  };
+
+  const resolveMandatoryCaptureContext = async () => {
+    const location = await getCurrentCaptureLocation();
+    if (location.latitude == null || location.longitude == null) {
+      alert('Location access is required before taking photo or video. Turn on browser/site geolocation and try again.');
+      return null;
+    }
+    return {
+      latitude: location.latitude,
+      longitude: location.longitude,
+      capturedAt: location.timestamp ? formatOffsetTimestamp(location.timestamp, 6) : resolveFallbackTimestamp(),
+    };
+  };
+
+  const ensureLocationEnabledBeforeCapture = async () => {
+    const location = await getCurrentCaptureLocation();
+    if (location.latitude == null || location.longitude == null) {
+      alert('Please enable browser/site geolocation before taking photo or video, then try again.');
+      return false;
+    }
+    return true;
+  };
+
+  const resetProgressModalState = () => {
+    setProgressDidCureToday('yes');
+    setProgressRemark('');
+    setProgressMediaFiles([]);
+  };
+
+  const closeProgressModal = () => {
+    setProgressTargetAnnotation(null);
+    resetProgressModalState();
+  };
+
+  const openProgressModalForAnnotation = async (annotation: Annotation | null) => {
+    if (!annotation) return;
+    if (!annotation.curingStartDate || !annotation.curingEndDate) {
+      alert('Set the element schedule first before posting progress.');
+      return;
+    }
+    const row = progressRowByElementId[annotation.id];
+    if (row?.is_completed) {
+      alert('Progress cannot be posted for a completed element.');
+      return;
+    }
+    try {
+      const settingsResponse = await systemService.getSettings();
+      setManualFileEntryEnabled(!!settingsResponse.manual_file_entry_enabled);
+      setServerTimeOffsetHours(Number(settingsResponse.server_time_offset_hours || 0));
+      setServerNowUtc(settingsResponse.server_now_utc || null);
+    } catch {
+      setManualFileEntryEnabled(true);
+      setServerTimeOffsetHours(0);
+      setServerNowUtc(null);
+    }
+    setProgressTargetAnnotation(annotation);
+    resetProgressModalState();
+  };
+
+  const appendProgressFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const incoming = Array.from(files);
+    try {
+      await validateMediaFiles(incoming);
+      setProgressMediaFiles((current) => [
+        ...current,
+        ...incoming.map((file) => ({
+          file,
+          source: 'manual' as const,
+          capturedAt: null,
+          latitude: null,
+          longitude: null,
+        })),
+      ]);
+    } catch (error: any) {
+      alert(error.message || 'Invalid media file.');
+    }
+  };
+
+  const openProgressCameraCapture = async (mode: 'photo' | 'video') => {
+    const allowed = await ensureLocationEnabledBeforeCapture();
+    if (!allowed) return;
+    progressDiscardCameraResultRef.current = false;
+    setProgressCameraMode(mode);
+    setProgressCameraModalOpen(true);
+  };
+
+  const closeProgressCameraModal = () => {
+    progressDiscardCameraResultRef.current = true;
+    setProgressCameraModalOpen(false);
+  };
+
+  const captureProgressPhoto = async () => {
+    const video = progressLiveVideoRef.current;
+    if (!video || video.videoWidth === 0 || video.videoHeight === 0) {
+      alert('Camera is not ready yet.');
+      return;
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const context = canvas.getContext('2d');
+    if (!context) {
+      alert('Unable to capture photo from camera.');
+      return;
+    }
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+    if (!blob) {
+      alert('Unable to capture photo from camera.');
+      return;
+    }
+    const captureContext = await resolveMandatoryCaptureContext();
+    if (!captureContext) return;
+    const file = new File([blob], `camera-photo-${Date.now()}.jpg`, { type: 'image/jpeg' });
+    setProgressMediaFiles((current) => [
+      ...current,
+      {
+        file,
+        source: 'camera-photo',
+        capturedAt: captureContext.capturedAt,
+        latitude: captureContext.latitude,
+        longitude: captureContext.longitude,
+      },
+    ]);
+    progressDiscardCameraResultRef.current = true;
+    closeProgressCameraModal();
+  };
+
+  const toggleProgressVideoRecording = async () => {
+    if (progressRecording) {
+      progressMediaRecorderRef.current?.stop();
+      return;
+    }
+    const stream = progressStreamRef.current;
+    if (!stream) {
+      alert('Camera is not ready yet.');
+      return;
+    }
+    if (typeof MediaRecorder === 'undefined') {
+      alert('Video recording is not supported on this device/browser.');
+      return;
+    }
+    const mimeType =
+      (MediaRecorder.isTypeSupported('video/webm;codecs=vp9') && 'video/webm;codecs=vp9') ||
+      (MediaRecorder.isTypeSupported('video/webm;codecs=vp8') && 'video/webm;codecs=vp8') ||
+      (MediaRecorder.isTypeSupported('video/webm') && 'video/webm') ||
+      '';
+    try {
+      progressMediaChunksRef.current = [];
+      const captureContext = await resolveMandatoryCaptureContext();
+      if (!captureContext) return;
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      progressMediaRecorderRef.current = recorder;
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) progressMediaChunksRef.current.push(event.data);
+      };
+      recorder.onstop = async () => {
+        if (progressDiscardCameraResultRef.current) {
+          setProgressRecording(false);
+          return;
+        }
+        try {
+          const blob = new Blob(progressMediaChunksRef.current, { type: recorder.mimeType || 'video/webm' });
+          const file = new File([blob], `camera-video-${Date.now()}.webm`, { type: blob.type || 'video/webm' });
+          await validateMediaFiles([file]);
+          setProgressMediaFiles((current) => [
+            ...current,
+            {
+              file,
+              source: 'camera-video',
+              capturedAt: captureContext.capturedAt,
+              latitude: captureContext.latitude,
+              longitude: captureContext.longitude,
+            },
+          ]);
+          progressDiscardCameraResultRef.current = true;
+          closeProgressCameraModal();
+        } catch (error: any) {
+          alert(error.message || 'Unable to save captured video.');
+        } finally {
+          setProgressRecording(false);
+        }
+      };
+      recorder.start();
+      setProgressRecording(true);
+    } catch (error: any) {
+      alert(error?.message || 'Unable to start video recording.');
+    }
+  };
+
+  const submitProgressFromPlans = async () => {
+    if (!progressTargetAnnotation) return;
+    const formData = new FormData();
+    formData.append('drawing_element_id', progressTargetAnnotation.id);
+    formData.append('progress_date', isoToday());
+    formData.append('did_cure_today', progressDidCureToday);
+    formData.append('remark', progressRemark);
+    formData.append('media_metadata_json', JSON.stringify(progressMediaFiles.map((item) => ({
+      name: item.file.name,
+      source: item.source,
+      capturedAt: item.capturedAt ?? null,
+      latitude: item.latitude ?? null,
+      longitude: item.longitude ?? null,
+    }))));
+    progressMediaFiles.forEach((item) => formData.append('files', item.file));
+    try {
+      setProgressSubmitting(true);
+      await progressService.createEntry(formData);
+      closeProgressModal();
+      await refreshProgressRows();
+      alert('Today progress added successfully.');
+    } catch (error: any) {
+      alert(error.response?.data?.detail || 'Failed to save today progress.');
+    } finally {
+      setProgressSubmitting(false);
+    }
+  };
+
+  useEffect(() => () => {
+    stopProgressCameraSession();
+  }, []);
+
+  useEffect(() => {
+    if (!progressCameraModalOpen) {
+      stopProgressCameraSession();
+      setProgressCameraError('');
+      return;
+    }
+
+    const startCamera = async () => {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setProgressCameraError('Camera access is not supported on this device/browser.');
+        return;
+      }
+      try {
+        setProgressCameraLoading(true);
+        setProgressCameraError('');
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' } },
+          audio: progressCameraMode === 'video',
+        });
+        progressStreamRef.current = stream;
+        if (progressLiveVideoRef.current) {
+          progressLiveVideoRef.current.srcObject = stream;
+          await progressLiveVideoRef.current.play();
+        }
+      } catch (error: any) {
+        setProgressCameraError(error?.message || 'Unable to access camera.');
+      } finally {
+        setProgressCameraLoading(false);
+      }
+    };
+
+    void startCamera();
+  }, [progressCameraModalOpen, progressCameraMode]);
+
   const resetInlineElementDraft = (geometryType: string) => {
     setInlineElementDraft({ element_name: '', description: '', required_curing_days: '', geometry_type: geometryType });
   };
@@ -568,9 +957,19 @@ export default function Plans() {
     if (!activeDrawingId || !pageId) return;
     try {
       setSaveState('saving');
+      const previousSelectedIds = [...selectedIds];
       const response = await hierarchyService.saveDrawingAnnotations(activeDrawingId, pageId, annotations);
       if (response.annotations) {
         setAnnotationsForPage(pageId, response.annotations);
+        if (previousSelectedIds.length > 0) {
+          const remappedSelectedIds = previousSelectedIds
+            .map((selectedId) => {
+              const selectedIndex = annotations.findIndex((annotation) => annotation.id === selectedId);
+              return selectedIndex >= 0 ? response.annotations[selectedIndex]?.id : selectedId;
+            })
+            .filter((value): value is string => typeof value === 'string' && value.length > 0);
+          setSelectedIds(remappedSelectedIds);
+        }
       }
       void refreshProgressRows();
       setSaveState('saved');
@@ -1548,6 +1947,7 @@ export default function Plans() {
     patch: Partial<Pick<Annotation, 'memberName' | 'color' | 'elementType' | 'curingStartDate' | 'isHidden'>>,
   ) => {
     if (!activeDrawingId || !activePageId) return;
+    const originalAnnotation = currentAnnotations.find((annotation) => annotation.id === elementId);
 
     const optimistic = currentAnnotations.map((annotation) => {
       if (annotation.id !== elementId) return annotation;
@@ -1581,6 +1981,42 @@ export default function Plans() {
       )));
       void refreshProgressRows();
     } catch (error: any) {
+      if (error?.response?.status === 404 && originalAnnotation) {
+        try {
+          const latestResponse = await hierarchyService.getDrawingAnnotations(activeDrawingId, activePageId);
+          const latestAnnotations: Annotation[] = latestResponse.annotations || [];
+          setAnnotationsForPage(activePageId, latestAnnotations);
+
+          const recoveredAnnotation = latestAnnotations.find((annotation) => (
+            annotation.type === originalAnnotation.type
+            && annotation.elementType === (patch.elementType ?? originalAnnotation.elementType)
+            && (annotation.memberName || '') === (patch.memberName ?? originalAnnotation.memberName ?? '')
+            && annotation.color === (patch.color ?? originalAnnotation.color)
+            && pointsMatch(annotation.points, originalAnnotation.points)
+          ));
+
+          if (recoveredAnnotation) {
+            const retryResponse = await hierarchyService.updateDrawingAnnotation(activeDrawingId, activePageId, recoveredAnnotation.id, {
+              memberName: patch.memberName,
+              color: patch.color,
+              elementType: patch.elementType,
+              curingStartDate: patch.curingStartDate,
+              isHidden: patch.isHidden,
+            });
+            const updated = retryResponse.annotation;
+            setAnnotationsForPage(activePageId, latestAnnotations.map((annotation) => (
+              annotation.id === recoveredAnnotation.id ? updated : annotation
+            )));
+            setSelectedIds((current) => current.map((id) => (id === elementId ? recoveredAnnotation.id : id)));
+            void refreshProgressRows();
+            return;
+          }
+        } catch (retryError: any) {
+          await reloadCurrentPageAnnotations(activeDrawingId, activePageId, { preserveSelection: true });
+          alert(retryError.response?.data?.detail || 'Failed to update element.');
+          return;
+        }
+      }
       await reloadCurrentPageAnnotations(activeDrawingId, activePageId, { preserveSelection: true });
       alert(error.response?.data?.detail || 'Failed to update element.');
     }
@@ -1917,12 +2353,12 @@ export default function Plans() {
 
   const selectedElementTodayLabel = (() => {
     if (!singleSelectedAnnotation) return null;
-    if (singleSelectedProgress) return singleSelectedProgress.today_status === 'added' ? 'Added Today' : 'Pending Today';
+    if (singleSelectedProgress) return singleSelectedProgress.today_status === 'added' ? 'Added Today' : 'Pending';
     if (!singleSelectedAnnotation.curingStartDate || !singleSelectedAnnotation.curingEndDate) return 'Not Scheduled';
     const today = localIsoDate();
     if (today < singleSelectedAnnotation.curingStartDate) return 'Upcoming';
     if (today > singleSelectedAnnotation.curingEndDate) return 'Completed';
-    return 'Pending Today';
+    return 'Pending';
   })();
 
   const selectedElementTimeline = (() => {
@@ -2050,14 +2486,24 @@ export default function Plans() {
                 </div>
               </div>
               {singleSelectedAnnotation.curingStartDate && singleSelectedAnnotation.curingEndDate ? (
-                <button
-                  type="button"
-                  onClick={() => setPresentationElementId(singleSelectedAnnotation.id)}
-                  className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
-                  title="Presentation"
-                >
-                  <Presentation className="h-4 w-4" />
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => { void openProgressModalForAnnotation(singleSelectedAnnotation); }}
+                    className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                    title="Add Progress"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPresentationElementId(singleSelectedAnnotation.id)}
+                    className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                    title="Presentation"
+                  >
+                    <Presentation className="h-4 w-4" />
+                  </button>
+                </>
               ) : null}
               <button
                 type="button"
@@ -2100,8 +2546,34 @@ export default function Plans() {
                 </div>
               </>
             ) : (
-              <div className="mt-3 text-sm font-black uppercase tracking-[0.18em] text-slate-400">
-                Not Scheduled
+              <div className="mt-3 flex items-center gap-3 text-sm font-black uppercase tracking-[0.18em] text-slate-400">
+                <span>Not Scheduled</span>
+                <input
+                  ref={selectedInfoStartDateInputRef}
+                  type="date"
+                  className="sr-only"
+                  tabIndex={-1}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    event.currentTarget.value = '';
+                    if (!singleSelectedAnnotation || !value) return;
+                    void handleUpdateAnnotationMeta(singleSelectedAnnotation.id, { curingStartDate: value });
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (saveState === 'saving') return;
+                    const input = selectedInfoStartDateInputRef.current;
+                    if (!input) return;
+                    if (typeof input.showPicker === 'function') input.showPicker();
+                    else input.click();
+                  }}
+                  disabled={saveState === 'saving'}
+                  className="text-sm font-black uppercase tracking-[0.18em] text-blue-600 transition-colors hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  + Start Date
+                </button>
               </div>
             )}
           </div>
@@ -2338,6 +2810,15 @@ export default function Plans() {
             >
               <Plus className="h-4 w-4" />
               Elements
+            </button>
+            <button
+              onClick={() => { void openProgressModalForAnnotation(singleSelectedAnnotation); }}
+              disabled={!singleSelectedAnnotation || !singleSelectedAnnotation.curingStartDate || !singleSelectedAnnotation.curingEndDate || !!singleSelectedProgress?.is_completed}
+              className="inline-flex items-center gap-2 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black uppercase tracking-[0.16em] text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40"
+              type="button"
+            >
+              <Plus className="h-4 w-4" />
+              Progress
             </button>
             <button
               onClick={handleToggleSelectAll}
@@ -3047,6 +3528,195 @@ export default function Plans() {
                   )}
                 </tbody>
               </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {progressTargetAnnotation && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-3xl rounded-[28px] border border-slate-200 bg-white p-6 shadow-2xl">
+            <div className="mb-5 flex items-start justify-between">
+              <div>
+                <h3 className="text-2xl font-black tracking-tight text-slate-900">Post Progress</h3>
+                <p className="mt-1 text-sm font-medium text-slate-500">
+                  {progressTargetAnnotation.memberName || progressTargetAnnotation.elementType}
+                </p>
+              </div>
+              <button onClick={closeProgressModal} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="grid gap-5 md:grid-cols-2">
+              <div>
+                <label className="mb-2 block text-[11px] font-black uppercase tracking-widest text-slate-500">Did Cured Today?</label>
+                <select
+                  value={progressDidCureToday}
+                  onChange={(e) => setProgressDidCureToday(e.target.value as 'yes' | 'no')}
+                  className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-500"
+                >
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-[11px] font-black uppercase tracking-widest text-slate-500">Today</label>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-black text-slate-700">
+                  {formatDisplayDate(isoToday())}
+                </div>
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="mb-2 block text-[11px] font-black uppercase tracking-widest text-slate-500">Remark</label>
+                <textarea
+                  value={progressRemark}
+                  onChange={(e) => setProgressRemark(e.target.value)}
+                  rows={4}
+                  className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-500"
+                  placeholder="Add your progress note"
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="mb-2 block text-[11px] font-black uppercase tracking-widest text-slate-500">Evidence</label>
+                <div className="flex flex-wrap gap-3">
+                  {manualFileEntryEnabled && (
+                    <>
+                      <input
+                        ref={progressUploadInputRef}
+                        type="file"
+                        accept=".jpg,.jpeg,.png,.webp,.bmp,.gif,.mp4,.webm,.mov,.avi,image/jpeg,image/png,image/webp,image/bmp,image/gif,video/*"
+                        multiple
+                        className="hidden"
+                        onChange={(e) => { void appendProgressFiles(e.target.files); e.currentTarget.value = ''; }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => progressUploadInputRef.current?.click()}
+                        className="inline-flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-black text-slate-700 hover:bg-slate-50"
+                      >
+                        <Upload className="h-4 w-4 text-blue-500" />
+                        Upload Photo / Video
+                      </button>
+                    </>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => { void openProgressCameraCapture('photo'); }}
+                    className="inline-flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-black text-slate-700 hover:bg-slate-50"
+                  >
+                    <Camera className="h-4 w-4 text-blue-500" />
+                    Take Photo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { void openProgressCameraCapture('video'); }}
+                    className="inline-flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-black text-slate-700 hover:bg-slate-50"
+                  >
+                    <Video className="h-4 w-4 text-blue-500" />
+                    Record Video
+                  </button>
+                </div>
+                <p className="mt-2 text-xs font-medium text-slate-400">Multiple files allowed. Videos must be 2 minutes or shorter.</p>
+                {progressMediaFiles.length > 0 && (
+                  <div className="mt-3 space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                    {progressMediaFiles.map((item, index) => (
+                      <div key={`${item.file.name}-${index}`} className="text-sm font-bold text-slate-600">
+                        {item.file.name}
+                        {item.capturedAt && <span className="ml-2 text-xs font-semibold text-slate-400">captured {new Date(item.capturedAt).toLocaleString()}</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={closeProgressModal}
+                className="rounded-2xl border border-slate-300 px-4 py-2.5 text-sm font-black text-slate-600 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => { void submitProgressFromPlans(); }}
+                disabled={progressSubmitting}
+                className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-2.5 text-sm font-black text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {progressSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                Save Progress
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {progressCameraModalOpen && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-3xl rounded-[28px] border border-slate-200 bg-white p-6 shadow-2xl">
+            <div className="mb-5 flex items-start justify-between">
+              <div>
+                <h3 className="text-2xl font-black tracking-tight text-slate-900">
+                  {progressCameraMode === 'photo' ? 'Take Photo' : 'Record Video'}
+                </h3>
+                <p className="mt-1 text-sm font-medium text-slate-500">
+                  Camera capture opens directly here and saves into today&apos;s progress evidence.
+                </p>
+              </div>
+              <button onClick={closeProgressCameraModal} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-slate-950">
+              <div className="relative aspect-video w-full">
+                <video ref={progressLiveVideoRef} autoPlay playsInline muted={progressCameraMode === 'photo'} className="h-full w-full object-cover" />
+                {progressCameraLoading && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-slate-950/60">
+                    <Loader2 className="h-8 w-8 animate-spin text-white" />
+                  </div>
+                )}
+                {progressCameraError && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-slate-950/80 px-6 text-center text-sm font-bold text-white">
+                    {progressCameraError}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={closeProgressCameraModal}
+                className="rounded-2xl border border-slate-300 px-4 py-2.5 text-sm font-black text-slate-600 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              {progressCameraMode === 'photo' ? (
+                <button
+                  type="button"
+                  onClick={() => { void captureProgressPhoto(); }}
+                  disabled={progressCameraLoading || !!progressCameraError}
+                  className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-2.5 text-sm font-black text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Camera className="h-4 w-4" />
+                  Capture Photo
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => { void toggleProgressVideoRecording(); }}
+                  disabled={progressCameraLoading || !!progressCameraError}
+                  className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50 ${progressRecording ? 'bg-red-600 hover:bg-red-500' : 'bg-slate-900 hover:bg-slate-800'}`}
+                >
+                  {progressRecording ? <Loader2 className="h-4 w-4 animate-spin" /> : <Video className="h-4 w-4" />}
+                  {progressRecording ? 'Stop Recording' : 'Start Recording'}
+                </button>
+              )}
             </div>
           </div>
         </div>
