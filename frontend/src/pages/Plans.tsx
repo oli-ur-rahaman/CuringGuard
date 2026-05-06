@@ -19,6 +19,7 @@ import {
   Square as SquareIcon,
   PenSquare,
   Plus,
+  Presentation,
   RefreshCw,
   ScanSearch,
   Slash,
@@ -2048,14 +2049,16 @@ export default function Plans() {
                   )}
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setPresentationElementId(singleSelectedAnnotation.id)}
-                className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
-                title="Presentation"
-              >
-                <ScanSearch className="h-4 w-4" />
-              </button>
+              {singleSelectedAnnotation.curingStartDate && singleSelectedAnnotation.curingEndDate ? (
+                <button
+                  type="button"
+                  onClick={() => setPresentationElementId(singleSelectedAnnotation.id)}
+                  className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                  title="Presentation"
+                >
+                  <Presentation className="h-4 w-4" />
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={() => {
