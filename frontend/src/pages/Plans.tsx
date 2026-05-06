@@ -526,7 +526,7 @@ export default function Plans() {
       : `copy-${Date.now()}-${Math.random().toString(16).slice(2)}`,
     memberName: `${annotation.memberName || annotation.elementType} copy`,
     color: getNextCopyColor(annotation.color),
-    points: annotation.points.map((point) => ({ x: point.x + 18, y: point.y + 18 })),
+    points: annotation.points.map((point) => ({ x: point.x, y: point.y })),
   });
 
   const resetInlineElementDraft = (geometryType: string) => {
