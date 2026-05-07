@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
+  Check,
   Camera,
   CheckSquare2,
   ChevronDown,
@@ -131,6 +132,23 @@ type DrawingSession =
   | { tool: 'rect'; start: Point; current: Point }
   | { tool: 'polygon' | 'line'; points: Point[] }
   | { tool: 'calibrate'; start: Point; current: Point };
+type TouchGesture =
+  | { kind: 'idle' }
+  | { kind: 'selectionPending'; pointerId: number; startClient: Point; startPage: Point }
+  | { kind: 'selectionBox'; pointerId: number; startClient: Point; startPage: Point }
+  | { kind: 'oneFingerPan'; pointerId: number; startClient: Point; startPosition: Point }
+  | { kind: 'drawPlacement'; pointerId: number; tool: ToolId; startClient: Point; pagePoint: Point }
+  | { kind: 'twoFingerNav'; pointerIds: [number, number]; startDistance: number; startMidpoint: Point; startScale: number; contentPoint: Point };
+type TouchMagnifierState = {
+  clientX: number;
+  clientY: number;
+  pagePoint: Point;
+  snapshot: string | null;
+};
+const TOUCH_LONG_PRESS_MS = 360;
+const TOUCH_TAP_MOVE_TOLERANCE = 10;
+const TOUCH_MAGNIFIER_SIZE = 132;
+const TOUCH_MAGNIFIER_ZOOM = 2.35;
 type PlanWorkspaceState = {
   structureId: number;
   drawingId: number;
@@ -154,6 +172,12 @@ const COLOR_SWATCHES = ['#3b82f6', '#16a34a', '#f59e0b', '#ef4444', '#8b5cf6', '
 const PLAN_WORKSPACE_KEY = 'curingguard.plan.workspace';
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
+const createClientId = () => {
+  if (typeof globalThis.crypto !== 'undefined' && typeof globalThis.crypto.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID();
+  }
+  return `cg-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+};
 
 const loadPlanWorkspace = (): PlanWorkspaceState | null => {
   try {
@@ -387,6 +411,13 @@ const intersectsSelectionBox = (annotation: Annotation, box: SelectionBox) => {
   return !(bounds.maxX < boxMinX || bounds.minX > boxMaxX || bounds.maxY < boxMinY || bounds.minY > boxMaxY);
 };
 
+const pointDistance = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
+
+const midpoint = (a: Point, b: Point): Point => ({
+  x: (a.x + b.x) / 2,
+  y: (a.y + b.y) / 2,
+});
+
 export default function Plans() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -478,8 +509,14 @@ export default function Plans() {
   const [selectionBox, setSelectionBox] = useState<SelectionBox | null>(null);
   const [selectionToggleMode, setSelectionToggleMode] = useState(false);
   const [drawingSession, setDrawingSession] = useState<DrawingSession | null>(null);
+  const drawingSessionRef = useRef<DrawingSession | null>(null);
+  const [touchGestureState, setTouchGestureState] = useState<TouchGesture>({ kind: 'idle' });
+  const touchGestureRef = useRef<TouchGesture>({ kind: 'idle' });
+  const [touchMagnifier, setTouchMagnifier] = useState<TouchMagnifierState | null>(null);
+  const [touchDrawingMode, setTouchDrawingMode] = useState(false);
   const [toolConfigDraft, setToolConfigDraft] = useState<ToolConfig>(TOOL_CONFIG_DEFAULT);
   const [activeToolConfig, setActiveToolConfig] = useState<ToolConfig | null>(null);
+  const activeToolConfigRef = useRef<ToolConfig | null>(null);
   const [toolModalOpen, setToolModalOpen] = useState(false);
   const [calibrationModalOpen, setCalibrationModalOpen] = useState(false);
   const [pendingCalibrationLine, setPendingCalibrationLine] = useState<[Point, Point] | null>(null);
@@ -495,6 +532,9 @@ export default function Plans() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const planRootRef = useRef<HTMLDivElement>(null);
   const renderCanvasRef = useRef<HTMLCanvasElement>(null);
+  const renderCanvasContextRef = useRef<CanvasRenderingContext2D | null>(null);
+  const activePageRenderTaskRef = useRef<any>(null);
+  const thumbnailRenderTaskRef = useRef<any>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const thumbnailRailRef = useRef<HTMLDivElement>(null);
   const dateInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -506,6 +546,8 @@ export default function Plans() {
   const progressMediaRecorderRef = useRef<MediaRecorder | null>(null);
   const progressMediaChunksRef = useRef<Blob[]>([]);
   const progressDiscardCameraResultRef = useRef(false);
+  const activeTouchPointsRef = useRef<Map<number, Point>>(new Map());
+  const touchLongPressTimeoutRef = useRef<number | null>(null);
   const restoredViewportKeyRef = useRef('');
   const workspaceRestoreReadyRef = useRef(false);
   const viewportRestoreAppliedRef = useRef(false);
@@ -1034,6 +1076,10 @@ export default function Plans() {
     setDrawingSession(null);
     setSelectionBox(null);
     setSelectionStart(null);
+    setTouchDrawingMode(false);
+    touchGestureRef.current = { kind: 'idle' };
+    setTouchGestureState({ kind: 'idle' });
+    setTouchMagnifier(null);
     setSelectedIds([]);
     setToolModalOpen(true);
   };
@@ -1351,8 +1397,9 @@ export default function Plans() {
     const renderActivePage = async () => {
       const canvas = renderCanvasRef.current;
       if (!canvas) return;
-      const context = canvas.getContext('2d');
+      const context = renderCanvasContextRef.current || canvas.getContext('2d', { willReadFrequently: true });
       if (!context) return;
+      renderCanvasContextRef.current = context;
 
       const activePage = pages.find((page) => page.id === activePageId);
       if (!activePage) {
@@ -1399,10 +1446,26 @@ export default function Plans() {
       setCanvasSize({ width: viewport.width, height: viewport.height });
       context.fillStyle = '#ffffff';
       context.fillRect(0, 0, canvas.width, canvas.height);
-      await pdfPage.render({ canvasContext: context, viewport }).promise;
+      const renderTask = pdfPage.render({ canvasContext: context, viewport });
+      activePageRenderTaskRef.current = renderTask;
+      try {
+        await renderTask.promise;
+      } catch (error: any) {
+        if (error?.name !== 'RenderingCancelledException') {
+          console.error('Failed to render active PDF page', error);
+        }
+      } finally {
+        if (activePageRenderTaskRef.current === renderTask) {
+          activePageRenderTaskRef.current = null;
+        }
+      }
     };
 
     void renderActivePage();
+    return () => {
+      activePageRenderTaskRef.current?.cancel?.();
+      activePageRenderTaskRef.current = null;
+    };
   }, [activePageId, pages, pdfDocument, imageObjectUrl]);
 
   useEffect(() => {
@@ -1491,14 +1554,24 @@ export default function Plans() {
         canvas.height = viewport.height;
         context.fillStyle = '#ffffff';
         context.fillRect(0, 0, canvas.width, canvas.height);
-        await pdfPage.render({ canvasContext: context, viewport }).promise;
+        const renderTask = pdfPage.render({ canvasContext: context, viewport });
+        thumbnailRenderTaskRef.current = renderTask;
+        await renderTask.promise;
         setPageThumbnails((current) => ({ ...current, [nextPage.id]: canvas.toDataURL('image/png') }));
-      } catch (error) {
-        console.error('Failed to build page thumbnail', error);
+      } catch (error: any) {
+        if (error?.name !== 'RenderingCancelledException') {
+          console.error('Failed to build page thumbnail', error);
+        }
+      } finally {
+        thumbnailRenderTaskRef.current = null;
       }
     };
 
     void buildThumbnail();
+    return () => {
+      thumbnailRenderTaskRef.current?.cancel?.();
+      thumbnailRenderTaskRef.current = null;
+    };
   }, [pages, pageThumbnails, pdfDocument, imageObjectUrl]);
 
   useEffect(() => {
@@ -1536,15 +1609,34 @@ export default function Plans() {
   }, [activeStructureId, activeDrawingId, activePageId]);
 
   useEffect(() => {
+    drawingSessionRef.current = drawingSession;
+  }, [drawingSession]);
+
+  useEffect(() => {
+    activeToolConfigRef.current = activeToolConfig;
+  }, [activeToolConfig]);
+
+  useEffect(() => {
     const handleEscapeReset = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       setDrawingSession(null);
       setSelectionBox(null);
       setSelectionStart(null);
+      setTouchDrawingMode(false);
+      touchGestureRef.current = { kind: 'idle' };
+      setTouchGestureState({ kind: 'idle' });
+      setTouchMagnifier(null);
     };
 
     window.addEventListener('keydown', handleEscapeReset);
     return () => window.removeEventListener('keydown', handleEscapeReset);
+  }, []);
+
+  useEffect(() => () => {
+    if (touchLongPressTimeoutRef.current) {
+      window.clearTimeout(touchLongPressTimeoutRef.current);
+      touchLongPressTimeoutRef.current = null;
+    }
   }, []);
 
   const executeZoom = (targetScale: number, pointerX?: number, pointerY?: number) => {
@@ -1574,8 +1666,9 @@ export default function Plans() {
   const resolveCursorContrastColor = (pagePoint: Point) => {
     const canvas = renderCanvasRef.current;
     if (!canvas || !showDrawing) return 'white' as const;
-    const context = canvas.getContext('2d', { willReadFrequently: true });
+    const context = renderCanvasContextRef.current || canvas.getContext('2d', { willReadFrequently: true });
     if (!context) return 'white' as const;
+    if (!renderCanvasContextRef.current) renderCanvasContextRef.current = context;
     const sampleX = clamp(Math.round(pagePoint.x), 0, Math.max(canvas.width - 1, 0));
     const sampleY = clamp(Math.round(pagePoint.y), 0, Math.max(canvas.height - 1, 0));
     const [r, g, b, a] = context.getImageData(sampleX, sampleY, 1, 1).data;
@@ -1584,14 +1677,212 @@ export default function Plans() {
     return luminance >= 235 ? 'black' : 'white';
   };
 
-  const updateMouseTracking = (e: React.PointerEvent<HTMLDivElement>) => {
+  const setTouchGesture = (nextGesture: TouchGesture) => {
+    touchGestureRef.current = nextGesture;
+    setTouchGestureState(nextGesture);
+  };
+
+  const setDrawingSessionState = (nextSession: DrawingSession | null) => {
+    drawingSessionRef.current = nextSession;
+    setDrawingSession(nextSession);
+  };
+
+  const clearTouchLongPressTimer = () => {
+    if (touchLongPressTimeoutRef.current) {
+      window.clearTimeout(touchLongPressTimeoutRef.current);
+      touchLongPressTimeoutRef.current = null;
+    }
+  };
+
+  const updateMouseTracking = (e: React.PointerEvent<HTMLDivElement>, options?: { showCursor?: boolean }) => {
     const viewport = viewportRef.current;
     if (!viewport) return;
     const rect = viewport.getBoundingClientRect();
     const nextPagePoint = pagePointFromEvent(e.clientX, e.clientY);
-    setMouseViewport({ x: e.clientX - rect.left, y: e.clientY - rect.top, visible: true });
     setMousePage(nextPagePoint);
     setCursorContrastColor(resolveCursorContrastColor(nextPagePoint));
+    if (options?.showCursor === false) {
+      setMouseViewport((current) => ({ ...current, visible: false }));
+      return nextPagePoint;
+    }
+    setMouseViewport({ x: e.clientX - rect.left, y: e.clientY - rect.top, visible: true });
+    return nextPagePoint;
+  };
+
+  const updateTouchTracking = (clientX: number, clientY: number) => {
+    const nextPagePoint = pagePointFromEvent(clientX, clientY);
+    setMousePage(nextPagePoint);
+    setCursorContrastColor(resolveCursorContrastColor(nextPagePoint));
+    setMouseViewport((current) => ({ ...current, visible: false }));
+    return nextPagePoint;
+  };
+
+  const captureTouchMagnifierSnapshot = () => {
+    try {
+      return renderCanvasRef.current?.toDataURL('image/png') || null;
+    } catch {
+      return null;
+    }
+  };
+
+  const setTouchMagnifierFromPointer = (clientX: number, clientY: number, pagePoint: Point, snapshot?: string | null) => {
+    setTouchMagnifier({
+      clientX,
+      clientY,
+      pagePoint,
+      snapshot: snapshot === undefined ? touchMagnifier?.snapshot || null : snapshot,
+    });
+  };
+
+  const resetTouchInteraction = () => {
+    clearTouchLongPressTimer();
+    activeTouchPointsRef.current.clear();
+    setTouchGesture({ kind: 'idle' });
+    setTouchMagnifier(null);
+    setMouseViewport((current) => ({ ...current, visible: false }));
+  };
+
+  const selectAtPoint = (point: Point, toggle = false) => {
+    const tolerance = 8 / Math.max(scale, 0.3);
+    const hit = [...currentAnnotations].reverse().find((annotation) => hitTestAnnotation(annotation, point, tolerance));
+    if (toggle) {
+      if (!hit) return;
+      setSelectedIds((current) => current.includes(hit.id) ? current.filter((id) => id !== hit.id) : [...current, hit.id]);
+      return;
+    }
+    setSelectedIds(hit ? [hit.id] : []);
+  };
+
+  const startTwoFingerNavigation = () => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const touchPoints = Array.from(activeTouchPointsRef.current.entries());
+    if (touchPoints.length < 2) return;
+    const [, first] = touchPoints[0];
+    const [, second] = touchPoints[1];
+    const rect = viewport.getBoundingClientRect();
+    const midClient = midpoint(first, second);
+    const midViewport = { x: midClient.x - rect.left, y: midClient.y - rect.top };
+    const distance = Math.max(pointDistance(first, second), 1);
+    setIsPanning(false);
+    setSelectionBox(null);
+    setSelectionStart(null);
+    clearTouchLongPressTimer();
+    setTouchMagnifier(null);
+    setTouchGesture({
+      kind: 'twoFingerNav',
+      pointerIds: [touchPoints[0][0], touchPoints[1][0]],
+      startDistance: distance,
+      startMidpoint: midViewport,
+      startScale: scale,
+      contentPoint: {
+        x: (midViewport.x - position.x) / scale,
+        y: (midViewport.y - position.y) / scale,
+      },
+    });
+  };
+
+  const updateTwoFingerNavigation = (gesture: Extract<TouchGesture, { kind: 'twoFingerNav' }>) => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const first = activeTouchPointsRef.current.get(gesture.pointerIds[0]);
+    const second = activeTouchPointsRef.current.get(gesture.pointerIds[1]);
+    if (!first || !second) return;
+    const rect = viewport.getBoundingClientRect();
+    const midClient = midpoint(first, second);
+    const midViewport = { x: midClient.x - rect.left, y: midClient.y - rect.top };
+    const distance = Math.max(pointDistance(first, second), 1);
+    const nextScale = clamp(gesture.startScale * (distance / gesture.startDistance), 0.05, 10);
+    setScale(nextScale);
+    setPosition({
+      x: midViewport.x - gesture.contentPoint.x * nextScale,
+      y: midViewport.y - gesture.contentPoint.y * nextScale,
+    });
+  };
+
+  const finalizeTouchDrawPlacement = (tool: ToolId, pagePoint: Point) => {
+    const currentToolConfig = activeToolConfigRef.current;
+    if (tool === 'point' && currentToolConfig) {
+      finalizeDrawingAnnotation({
+        id: createClientId(),
+        type: 'point',
+        elementType: currentToolConfig.elementType,
+        memberName: currentToolConfig.memberName,
+        color: currentToolConfig.color,
+        pointShape: currentToolConfig.pointShape,
+        points: [pagePoint],
+      });
+      setTouchDrawingMode(false);
+      return;
+    }
+
+    if (tool === 'rect' && currentToolConfig) {
+      const currentSession = drawingSessionRef.current;
+      if (!currentSession || currentSession.tool !== 'rect') {
+        setDrawingSessionState({ tool: 'rect', start: pagePoint, current: pagePoint });
+        setTouchDrawingMode(true);
+      } else {
+        finalizeDrawingAnnotation({
+          id: createClientId(),
+          type: 'rect',
+          elementType: currentToolConfig.elementType,
+          memberName: currentToolConfig.memberName,
+          color: currentToolConfig.color,
+          points: [currentSession.start, pagePoint],
+        });
+        setTouchDrawingMode(false);
+      }
+      return;
+    }
+
+    if (tool === 'calibrate') {
+      const currentSession = drawingSessionRef.current;
+      if (!currentSession || currentSession.tool !== 'calibrate') {
+        setDrawingSessionState({ tool: 'calibrate', start: pagePoint, current: pagePoint });
+        setTouchDrawingMode(true);
+      } else {
+        setPendingCalibrationLine([currentSession.start, pagePoint]);
+        setCalibrationDraft({ value: '', unit: 'ft' });
+        setCalibrationModalOpen(true);
+        setDrawingSessionState(null);
+        setTouchDrawingMode(false);
+      }
+      return;
+    }
+
+    if ((tool === 'line' || tool === 'polygon') && currentToolConfig) {
+      const currentSession = drawingSessionRef.current;
+      if (!currentSession || currentSession.tool !== tool) {
+        setDrawingSessionState({ tool, points: [pagePoint] });
+      } else {
+        setDrawingSessionState({ ...currentSession, points: [...currentSession.points, pagePoint] });
+      }
+      setTouchDrawingMode(true);
+    }
+  };
+
+  const cancelTouchDrawing = () => {
+    setDrawingSessionState(null);
+    setSelectionBox(null);
+    setSelectionStart(null);
+    setTouchDrawingMode(false);
+    resetTouchInteraction();
+  };
+
+  const finishTouchMultiPointDrawing = () => {
+    if (!drawingSession || !activeToolConfig) return;
+    if (drawingSession.tool !== 'line' && drawingSession.tool !== 'polygon') return;
+    const minimumPoints = drawingSession.tool === 'polygon' ? 3 : 2;
+    if (drawingSession.points.length < minimumPoints) return;
+    finalizeDrawingAnnotation({
+      id: createClientId(),
+      type: drawingSession.tool,
+      elementType: activeToolConfig.elementType,
+      memberName: activeToolConfig.memberName,
+      color: activeToolConfig.color,
+      points: drawingSession.points,
+    });
+    setTouchDrawingMode(false);
   };
 
   const startSelection = (point: Point, ctrlKey: boolean) => {
@@ -1605,17 +1896,10 @@ export default function Plans() {
     const tiny = Math.hypot(endPoint.x - selectionStart.x, endPoint.y - selectionStart.y) < 4 / Math.max(scale, 0.3);
 
     if (tiny) {
-      const tolerance = 8 / Math.max(scale, 0.3);
-      const hit = [...currentAnnotations].reverse().find((annotation) => hitTestAnnotation(annotation, endPoint, tolerance));
       if (selectionToggleMode) {
-        if (!hit) {
-          setSelectionBox(null);
-          setSelectionStart(null);
-          return;
-        }
-        setSelectedIds((current) => current.includes(hit.id) ? current.filter((id) => id !== hit.id) : [...current, hit.id]);
+        selectAtPoint(endPoint, true);
       } else {
-        setSelectedIds(hit ? [hit.id] : []);
+        selectAtPoint(endPoint);
       }
     } else {
       const hits = currentAnnotations.filter((annotation) => intersectsSelectionBox(annotation, { start: selectionStart, end: endPoint })).map((annotation) => annotation.id);
@@ -1638,8 +1922,10 @@ export default function Plans() {
   };
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    updateMouseTracking(e);
-    const pagePoint = pagePointFromEvent(e.clientX, e.clientY);
+    const pagePoint = updateMouseTracking(e, { showCursor: e.pointerType !== 'touch' }) || pagePointFromEvent(e.clientX, e.clientY);
+    if (e.pointerType === 'touch') {
+      return;
+    }
 
     if (e.pointerType === 'mouse' && (e.button === 1 || activeTool === 'pan')) {
       setIsPanning(true);
@@ -1666,7 +1952,7 @@ export default function Plans() {
 
     if (activeTool === 'point' && activeToolConfig) {
       const annotation: Annotation = {
-        id: crypto.randomUUID(),
+        id: createClientId(),
         type: 'point',
         elementType: activeToolConfig.elementType,
         memberName: activeToolConfig.memberName,
@@ -1683,7 +1969,7 @@ export default function Plans() {
         setDrawingSession({ tool: 'rect', start: pagePoint, current: pagePoint });
       } else {
         finalizeDrawingAnnotation({
-          id: crypto.randomUUID(),
+          id: createClientId(),
           type: 'rect',
           elementType: activeToolConfig.elementType,
           memberName: activeToolConfig.memberName,
@@ -1716,7 +2002,7 @@ export default function Plans() {
     }
 
     finalizeDrawingAnnotation({
-      id: crypto.randomUUID(),
+        id: createClientId(),
       type: drawingSession.tool,
       elementType: activeToolConfig.elementType,
       memberName: activeToolConfig.memberName,
@@ -1726,8 +2012,11 @@ export default function Plans() {
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    updateMouseTracking(e);
-    const pagePoint = pagePointFromEvent(e.clientX, e.clientY);
+    const pagePoint = updateMouseTracking(e, { showCursor: e.pointerType !== 'touch' }) || pagePointFromEvent(e.clientX, e.clientY);
+
+    if (e.pointerType === 'touch') {
+      return;
+    }
 
     if (isPanning && e.pointerType === 'mouse') {
       setPosition({ x: e.clientX - startPan.x, y: e.clientY - startPan.y });
@@ -1750,8 +2039,10 @@ export default function Plans() {
   };
 
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
-    updateMouseTracking(e);
-    const pagePoint = pagePointFromEvent(e.clientX, e.clientY);
+    const pagePoint = updateMouseTracking(e, { showCursor: e.pointerType !== 'touch' }) || pagePointFromEvent(e.clientX, e.clientY);
+    if (e.pointerType === 'touch') {
+      return;
+    }
     if (isPanning) {
       setIsPanning(false);
       return;
@@ -1759,6 +2050,173 @@ export default function Plans() {
     if (activeTool === 'select' && selectionStart) {
       finalizeSelection(pagePoint);
     }
+  };
+
+  const handlePointerCancel = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== 'touch') return;
+  };
+
+  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    for (const touch of Array.from(e.changedTouches)) {
+      activeTouchPointsRef.current.set(touch.identifier, { x: touch.clientX, y: touch.clientY });
+    }
+    const touchPoints = Array.from(activeTouchPointsRef.current.entries());
+    const currentGesture = touchGestureRef.current;
+    if (touchPoints.length === 2 && currentGesture.kind !== 'drawPlacement') {
+      startTwoFingerNavigation();
+      return;
+    }
+    if (touchPoints.length > 1) return;
+    const [touchId, touchPoint] = touchPoints[0];
+    const pagePoint = updateTouchTracking(touchPoint.x, touchPoint.y);
+
+    if (activeTool === 'pan') {
+      setTouchGesture({
+        kind: 'oneFingerPan',
+        pointerId: touchId,
+        startClient: { x: touchPoint.x, y: touchPoint.y },
+        startPosition: { ...position },
+      });
+      return;
+    }
+
+    if (activeTool === 'select') {
+      setTouchGesture({
+        kind: 'selectionPending',
+        pointerId: touchId,
+        startClient: { x: touchPoint.x, y: touchPoint.y },
+        startPage: pagePoint,
+      });
+      clearTouchLongPressTimer();
+      touchLongPressTimeoutRef.current = window.setTimeout(() => {
+        const gesture = touchGestureRef.current;
+        if (gesture.kind !== 'selectionPending' || gesture.pointerId !== touchId) return;
+        startSelection(gesture.startPage, false);
+        setTouchGesture({
+          kind: 'selectionBox',
+          pointerId: gesture.pointerId,
+          startClient: gesture.startClient,
+          startPage: gesture.startPage,
+        });
+      }, TOUCH_LONG_PRESS_MS);
+      return;
+    }
+
+    if (activeTool === 'point' || activeTool === 'rect' || activeTool === 'line' || activeTool === 'polygon' || activeTool === 'calibrate') {
+      const snapshot = captureTouchMagnifierSnapshot();
+      setTouchMagnifierFromPointer(touchPoint.x, touchPoint.y, pagePoint, snapshot);
+      setTouchGesture({
+        kind: 'drawPlacement',
+        pointerId: touchId,
+        tool: activeTool,
+        startClient: { x: touchPoint.x, y: touchPoint.y },
+        pagePoint,
+      });
+      if (drawingSessionRef.current?.tool === 'rect') {
+        setDrawingSessionState({ ...drawingSessionRef.current, current: pagePoint });
+      }
+      if (drawingSessionRef.current?.tool === 'calibrate') {
+        setDrawingSessionState({ ...drawingSessionRef.current, current: pagePoint });
+      }
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    for (const touch of Array.from(e.changedTouches)) {
+      activeTouchPointsRef.current.set(touch.identifier, { x: touch.clientX, y: touch.clientY });
+    }
+    const gesture = touchGestureRef.current;
+    if (gesture.kind === 'twoFingerNav') {
+      updateTwoFingerNavigation(gesture);
+      return;
+    }
+    if (activeTouchPointsRef.current.size >= 2 && gesture.kind !== 'drawPlacement') {
+      startTwoFingerNavigation();
+      return;
+    }
+    if (gesture.kind === 'idle') return;
+    const activeTouch = activeTouchPointsRef.current.get(gesture.pointerId);
+    if (!activeTouch) return;
+    const pagePoint = updateTouchTracking(activeTouch.x, activeTouch.y);
+    if (gesture.kind === 'selectionPending') {
+      if (pointDistance(gesture.startClient, activeTouch) > TOUCH_TAP_MOVE_TOLERANCE) {
+        clearTouchLongPressTimer();
+      }
+      return;
+    }
+    if (gesture.kind === 'selectionBox') {
+      setSelectionBox({ start: gesture.startPage, end: pagePoint });
+      return;
+    }
+    if (gesture.kind === 'oneFingerPan') {
+      setPosition({
+        x: gesture.startPosition.x + (activeTouch.x - gesture.startClient.x),
+        y: gesture.startPosition.y + (activeTouch.y - gesture.startClient.y),
+      });
+      return;
+    }
+    if (gesture.kind === 'drawPlacement') {
+      touchGestureRef.current = { ...gesture, pagePoint };
+      setTouchMagnifierFromPointer(activeTouch.x, activeTouch.y, pagePoint);
+      if (drawingSessionRef.current?.tool === 'rect') {
+        setDrawingSessionState({ ...drawingSessionRef.current, current: pagePoint });
+      } else if (drawingSessionRef.current?.tool === 'calibrate') {
+        setDrawingSessionState({ ...drawingSessionRef.current, current: pagePoint });
+      }
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
+    const gesture = touchGestureRef.current;
+    const changedTouches = Array.from(e.changedTouches);
+    const endingTouch = gesture.kind === 'idle' || gesture.kind === 'twoFingerNav'
+      ? changedTouches[0]
+      : changedTouches.find((touch) => touch.identifier === gesture.pointerId) || changedTouches[0];
+    const endingPoint = endingTouch ? { x: endingTouch.clientX, y: endingTouch.clientY } : null;
+    const pagePoint = endingPoint ? updateTouchTracking(endingPoint.x, endingPoint.y) : null;
+
+    for (const touch of changedTouches) {
+      activeTouchPointsRef.current.delete(touch.identifier);
+    }
+    clearTouchLongPressTimer();
+
+    if (gesture.kind === 'twoFingerNav') {
+      if (activeTouchPointsRef.current.size === 0) resetTouchInteraction();
+      return;
+    }
+    if (!pagePoint) {
+      if (activeTouchPointsRef.current.size === 0) resetTouchInteraction();
+      return;
+    }
+    if (gesture.kind === 'selectionPending') {
+      if (endingPoint && pointDistance(gesture.startClient, endingPoint) <= TOUCH_TAP_MOVE_TOLERANCE) {
+        selectAtPoint(pagePoint);
+      }
+      resetTouchInteraction();
+      return;
+    }
+    if (gesture.kind === 'selectionBox') {
+      finalizeSelection(pagePoint);
+      resetTouchInteraction();
+      return;
+    }
+    if (gesture.kind === 'oneFingerPan') {
+      resetTouchInteraction();
+      return;
+    }
+    if (gesture.kind === 'drawPlacement') {
+      finalizeTouchDrawPlacement(gesture.tool, gesture.pagePoint);
+      resetTouchInteraction();
+      return;
+    }
+    if (activeTouchPointsRef.current.size === 0) resetTouchInteraction();
+  };
+
+  const handleTouchCancel = (e: React.TouchEvent<HTMLDivElement>) => {
+    for (const touch of Array.from(e.changedTouches)) {
+      activeTouchPointsRef.current.delete(touch.identifier);
+    }
+    resetTouchInteraction();
   };
 
   const handleOpenUploadModal = () => {
@@ -2353,7 +2811,7 @@ export default function Plans() {
 
   const selectedElementTodayLabel = (() => {
     if (!singleSelectedAnnotation) return null;
-    if (singleSelectedProgress) return singleSelectedProgress.today_status === 'added' ? 'Added Today' : 'Pending';
+    if (singleSelectedProgress) return singleSelectedProgress.today_status === 'added' ? 'Added' : 'Pending';
     if (!singleSelectedAnnotation.curingStartDate || !singleSelectedAnnotation.curingEndDate) return 'Not Scheduled';
     const today = localIsoDate();
     if (today < singleSelectedAnnotation.curingStartDate) return 'Upcoming';
@@ -2393,6 +2851,11 @@ export default function Plans() {
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onTouchCancel={handleTouchCancel}
         onDoubleClick={handleDoubleClick}
         onPointerLeave={() => {
           setMouseViewport((current) => ({ ...current, visible: false }));
@@ -2454,6 +2917,123 @@ export default function Plans() {
           </svg>
         </div>
 
+        {touchMagnifier && (() => {
+          const viewportRect = viewportRef.current?.getBoundingClientRect();
+          const viewportWidth = viewportRect?.width || window.innerWidth;
+          const viewportHeight = viewportRect?.height || window.innerHeight;
+          const left = clamp(
+            touchMagnifier.clientX - (viewportRect?.left || 0) - (TOUCH_MAGNIFIER_SIZE / 2),
+            16,
+            Math.max(viewportWidth - TOUCH_MAGNIFIER_SIZE - 16, 16),
+          );
+          const top = clamp(
+            touchMagnifier.clientY - (viewportRect?.top || 0) - TOUCH_MAGNIFIER_SIZE - 28,
+            16,
+            Math.max(viewportHeight - TOUCH_MAGNIFIER_SIZE - 16, 16),
+          );
+          const translated = TOUCH_MAGNIFIER_SIZE / 2;
+          return (
+            <div
+              className="pointer-events-none absolute z-30 overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-2xl"
+              style={{ left, top, width: TOUCH_MAGNIFIER_SIZE, height: TOUCH_MAGNIFIER_SIZE }}
+            >
+              <div className="absolute inset-0 bg-white">
+                {touchMagnifier.snapshot && (
+                  <img
+                    src={touchMagnifier.snapshot}
+                    alt=""
+                    className="absolute max-w-none select-none"
+                    draggable={false}
+                    style={{
+                      width: canvasSize.width * TOUCH_MAGNIFIER_ZOOM,
+                      height: canvasSize.height * TOUCH_MAGNIFIER_ZOOM,
+                      left: translated - touchMagnifier.pagePoint.x * TOUCH_MAGNIFIER_ZOOM,
+                      top: translated - touchMagnifier.pagePoint.y * TOUCH_MAGNIFIER_ZOOM,
+                    }}
+                  />
+                )}
+                <svg
+                  width={TOUCH_MAGNIFIER_SIZE}
+                  height={TOUCH_MAGNIFIER_SIZE}
+                  viewBox={`0 0 ${TOUCH_MAGNIFIER_SIZE} ${TOUCH_MAGNIFIER_SIZE}`}
+                  className="absolute inset-0"
+                >
+                  <g transform={`translate(${translated - touchMagnifier.pagePoint.x * TOUCH_MAGNIFIER_ZOOM} ${translated - touchMagnifier.pagePoint.y * TOUCH_MAGNIFIER_ZOOM}) scale(${TOUCH_MAGNIFIER_ZOOM})`}>
+                    {currentAnnotations.map(renderAnnotation)}
+                    {renderDraft()}
+                  </g>
+                </svg>
+              </div>
+              <div className="pointer-events-none absolute inset-0">
+                <div className="absolute left-1/2 top-3 bottom-3 w-px -translate-x-1/2 bg-slate-950/90" />
+                <div className="absolute top-1/2 left-3 right-3 h-px -translate-y-1/2 bg-slate-950/90" />
+                <div className="absolute left-1/2 top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-slate-950/90 bg-white/70" />
+              </div>
+            </div>
+          );
+        })()}
+
+        {(touchDrawingMode || touchGestureState.kind === 'drawPlacement') && drawingSession && (
+          <div
+            className="absolute right-5 top-24 z-30 flex flex-col gap-3"
+            onPointerDown={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
+            onPointerUp={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
+            onTouchStart={(event) => {
+              event.stopPropagation();
+            }}
+            onTouchEnd={(event) => {
+              event.stopPropagation();
+            }}
+          >
+            {(drawingSession.tool === 'line' || drawingSession.tool === 'polygon') && drawingSession.points.length >= (drawingSession.tool === 'polygon' ? 3 : 2) && (
+              <button
+                type="button"
+                onPointerUp={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  finishTouchMultiPointDrawing();
+                }}
+                onPointerDown={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                }}
+                onTouchStart={(event) => {
+                  event.stopPropagation();
+                }}
+                className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-600 text-white shadow-xl transition-colors hover:bg-emerald-500"
+                title="Finish"
+              >
+                <Check className="h-5 w-5" />
+              </button>
+            )}
+            <button
+              type="button"
+              onPointerUp={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                cancelTouchDrawing();
+              }}
+              onPointerDown={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+              }}
+              onTouchStart={(event) => {
+                event.stopPropagation();
+              }}
+              className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-900 text-white shadow-xl transition-colors hover:bg-slate-700"
+              title="Cancel"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+        )}
+
         {singleSelectedAnnotation && !selectedInfoClosed && (
           <div
             className={`absolute z-20 w-[312px] rounded-[22px] border border-slate-200 bg-white/96 px-4 py-3 shadow-xl backdrop-blur ${selectedInfoDrag.active ? 'cursor-grabbing' : 'cursor-default'}`}
@@ -2472,7 +3052,7 @@ export default function Plans() {
                   </div>
                   {isSelectedElementScheduled && (
                     <span className={`rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] ${
-                      selectedElementTodayLabel === 'Added Today'
+                      selectedElementTodayLabel === 'Added'
                         ? 'bg-emerald-100 text-emerald-700'
                         : selectedElementTodayLabel === 'Completed'
                           ? 'bg-slate-200 text-slate-600'
@@ -2589,8 +3169,8 @@ export default function Plans() {
         )}
       </div>
 
-      <div className="pointer-events-none absolute left-6 top-1/2 z-10 flex -translate-y-1/2 flex-col gap-2">
-        <div className="pointer-events-auto flex flex-col gap-3 rounded-3xl border border-slate-800 bg-slate-950/80 p-2.5 shadow-2xl backdrop-blur-xl">
+      <div className="pointer-events-none absolute left-0 top-[82px] z-10 flex flex-col gap-2 sm:left-6 sm:top-1/2 sm:-translate-y-1/2">
+        <div className="pointer-events-auto flex flex-col gap-2 rounded-r-3xl border border-l-0 border-slate-800 bg-slate-950/80 p-2 shadow-2xl backdrop-blur-xl sm:gap-3 sm:rounded-3xl sm:border-l sm:p-2.5">
           {tools.map((tool) => (
             <button
               key={tool.id}
@@ -2604,16 +3184,16 @@ export default function Plans() {
                 }
               }}
               title={tool.label}
-              className={`rounded-2xl p-3.5 transition-all ${activeTool === tool.id ? 'bg-blue-600 text-white shadow-[0_0_20px_rgba(37,99,235,0.4)]' : 'text-slate-500 hover:bg-slate-800 hover:text-white'}`}
+              className={`rounded-2xl p-2.5 transition-all sm:p-3.5 ${activeTool === tool.id ? 'bg-blue-600 text-white shadow-[0_0_20px_rgba(37,99,235,0.4)]' : 'text-slate-500 hover:bg-slate-800 hover:text-white'}`}
             >
-              <tool.icon className="h-6 w-6" />
+              <tool.icon className="h-5 w-5 sm:h-6 sm:w-6" />
             </button>
           ))}
         </div>
       </div>
 
-      <div className="pointer-events-none absolute left-1/2 top-6 z-20 -translate-x-1/2">
-        <div className="pointer-events-auto flex items-center gap-2 rounded-2xl border border-slate-800 bg-slate-950/90 px-3 py-2 shadow-xl">
+      <div className="pointer-events-none absolute left-1/2 top-0 z-20 w-[calc(100%-8px)] max-w-[980px] -translate-x-1/2 px-1 sm:top-6 sm:w-auto sm:max-w-none sm:px-0">
+        <div className="pointer-events-auto flex flex-wrap items-center justify-center gap-1.5 rounded-b-2xl border border-slate-800 bg-slate-950/90 px-2 py-2 shadow-xl sm:gap-2 sm:rounded-2xl sm:px-3">
           <button
             onClick={() => setTreeOpen((current) => !current)}
             title="Toggle plan explorer"
@@ -2688,7 +3268,7 @@ export default function Plans() {
         </div>
       </div>
 
-      <div className="pointer-events-none absolute left-1/2 top-[84px] z-20 -translate-x-1/2">
+      <div className="pointer-events-none absolute left-1/2 top-[110px] z-20 -translate-x-1/2 sm:top-[84px]">
         <div className="flex items-center gap-3 whitespace-nowrap text-center text-[13px] font-black tracking-[0.08em] text-black/65">
           <span>{activeDrawingName || 'No plan selected'}</span>
           <span className="text-black/35">/</span>
@@ -2746,11 +3326,20 @@ export default function Plans() {
                 {expanded && (
                   <div className="border-t border-slate-200 bg-white px-2 py-2">
                     {group.drawings.length > 0 ? group.drawings.map((drawing) => (
-                      <button
+                      <div
                         key={drawing.id}
+                        role="button"
+                        tabIndex={0}
                         onClick={() => {
                           setActiveStructureId(group.id);
                           setActiveDrawingId(drawing.id);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            setActiveStructureId(group.id);
+                            setActiveDrawingId(drawing.id);
+                          }
                         }}
                         className={`mb-1 flex w-full items-center justify-between rounded-xl border px-3 py-2 text-left text-xs font-black ${activeDrawingId === drawing.id ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-transparent text-slate-600 hover:border-slate-200 hover:bg-slate-50'}`}
                       >
@@ -2772,7 +3361,7 @@ export default function Plans() {
                           </button>
                           {activeDrawingId === drawing.id && <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] text-blue-700">ACTIVE</span>}
                         </div>
-                      </button>
+                      </div>
                     )) : (
                       <div className="px-3 py-3 text-xs font-black text-slate-400">No plans under this structure.</div>
                     )}
@@ -3289,9 +3878,10 @@ export default function Plans() {
               </button>
               <button
                 onClick={() => {
+                  activeToolConfigRef.current = toolConfigDraft;
                   setActiveToolConfig(toolConfigDraft);
                   setToolModalOpen(false);
-                  setDrawingSession(null);
+                  setDrawingSessionState(null);
                 }}
                 className="rounded-2xl bg-slate-900 px-4 py-2.5 text-sm font-black text-white hover:bg-slate-800"
               >

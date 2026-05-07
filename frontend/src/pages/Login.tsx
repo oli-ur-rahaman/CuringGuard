@@ -30,7 +30,11 @@ export default function Login() {
         navigate('/');
       }
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Authentication failed. Please check your credentials.');
+      if (!err.response) {
+        setError(`Cannot reach backend server from this device. Open the app using your PC Wi‑Fi IP and make sure port 8000 is reachable.`);
+      } else {
+        setError(err.response?.data?.detail || 'Authentication failed. Please check your credentials.');
+      }
     } finally {
       setLoading(false);
     }
