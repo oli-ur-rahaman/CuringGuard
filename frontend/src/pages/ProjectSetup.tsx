@@ -53,8 +53,10 @@ export default function ProjectSetup() {
 
   const [projects, setProjects] = useState<any[]>([]);
   const [packages, setPackages] = useState<any[]>([]);
+  const [allStructures, setAllStructures] = useState<any[]>([]);
   const [structures, setStructures] = useState<any[]>([]);
   const [contractors, setContractors] = useState<any[]>([]);
+  const [allDrawingsByStructure, setAllDrawingsByStructure] = useState<Record<number, any[]>>({});
   const [drawingsByStructure, setDrawingsByStructure] = useState<Record<number, any[]>>({});
   const [notificationSettingsByStructure, setNotificationSettingsByStructure] = useState<Record<number, { notification_time: string; auto_sms_enabled: boolean; auto_web_enabled: boolean }>>({});
   const [selectedStructureForUpload, setSelectedStructureForUpload] = useState<number | null>(null);
@@ -68,6 +70,8 @@ export default function ProjectSetup() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const initialFetchDoneRef = useRef(false);
   const effectiveViewMode: 'total' | 'structures' = isContractor ? 'structures' : viewMode;
+  const displayStructures = effectiveViewMode === 'structures' && !isContractor ? allStructures : structures;
+  const displayDrawingsByStructure = effectiveViewMode === 'structures' && !isContractor ? allDrawingsByStructure : drawingsByStructure;
 
   const refreshPackages = async (projectId: number, preferredPackageId?: number) => {
     const pkgData = await hierarchyService.getPackages(projectId);
@@ -122,14 +126,17 @@ export default function ProjectSetup() {
         const packageLists = await Promise.all(projData.map((project: any) => hierarchyService.getPackages(project.id)));
         const flatPackages = packageLists.flat();
         setPackages(flatPackages);
+        const structureLists = await Promise.all(flatPackages.map((pkg: any) => hierarchyService.getStructures(pkg.id)));
+        const strData = structureLists.flat();
+        setAllStructures(strData);
+        const drawingEntries = await Promise.all(
+          strData.map(async (structure: any) => [structure.id, await hierarchyService.getDrawings(structure.id)] as const)
+        );
+        const nextDrawingsByStructure = Object.fromEntries(drawingEntries);
+        setAllDrawingsByStructure(nextDrawingsByStructure);
         if (isContractor) {
-          const structureLists = await Promise.all(flatPackages.map((pkg: any) => hierarchyService.getStructures(pkg.id)));
-          const strData = structureLists.flat();
           setStructures(strData);
-          const drawingEntries = await Promise.all(
-            strData.map(async (structure: any) => [structure.id, await hierarchyService.getDrawings(structure.id)] as const)
-          );
-          setDrawingsByStructure(Object.fromEntries(drawingEntries));
+          setDrawingsByStructure(nextDrawingsByStructure);
         }
         const restoredProjectId = persistedViewRef.current.projectId;
         const nextProjectId = restoredProjectId && projData.some((project: any) => project.id === restoredProjectId)
@@ -140,7 +147,9 @@ export default function ProjectSetup() {
         setActiveProject(0);
         setActivePackage(0);
         setPackages([]);
+        setAllStructures([]);
         setStructures([]);
+        setAllDrawingsByStructure({});
         setDrawingsByStructure({});
       }
     } catch (error) {
@@ -226,7 +235,7 @@ export default function ProjectSetup() {
     if (!contractorId) return;
     try {
       await hierarchyService.assignContractor(structureId, contractorId);
-      await refreshStructures(activePackage);
+      await fetchData();
     } catch (e: any) {
       alert("Error assigning contractor: " + e.message);
     }
@@ -235,7 +244,7 @@ export default function ProjectSetup() {
   const handleRevokeContractor = async (structureId: number) => {
     try {
       await hierarchyService.assignContractor(structureId, null);
-      await refreshStructures(activePackage);
+      await fetchData();
     } catch (e: any) {
       alert(e.response?.data?.detail || e.message || 'Error revoking contractor.');
     }
@@ -302,7 +311,7 @@ export default function ProjectSetup() {
     if (!name || !name.trim()) return;
     try {
       await hierarchyService.updateStructure(structureId, { name: name.trim() });
-      await refreshStructures(activePackage);
+      await fetchData();
     } catch (error: any) {
       alert(error.response?.data?.detail || 'Failed to update structure.');
     }
@@ -312,7 +321,7 @@ export default function ProjectSetup() {
     if (!window.confirm(`Soft delete structure "${structureName}"?`)) return;
     try {
       await hierarchyService.deleteStructure(structureId);
-      await refreshStructures(activePackage);
+      await fetchData();
     } catch (error: any) {
       alert(error.response?.data?.detail || 'Failed to delete structure.');
     }
@@ -857,9 +866,9 @@ export default function ProjectSetup() {
       </div>
       ) : (
       <div className="flex-1 overflow-y-auto pb-10">
-         {structures.length > 0 ? (
+         {displayStructures.length > 0 ? (
            <div className="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-5">
-             {structures.map(s => {
+             {displayStructures.map(s => {
                const assignedCon = contractors.find(c => c.id === s.contractor_id);
                return (
                  <div key={s.id} className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.06)] transition-all hover:border-slate-300 hover:shadow-[0_18px_38px_rgba(15,23,42,0.08)]">
@@ -929,9 +938,9 @@ export default function ProjectSetup() {
                        </div>
 
                        <div className="min-h-[94px] rounded-[18px] border border-white bg-white px-2 py-2">
-                         {(drawingsByStructure[s.id] || []).length > 0 ? (
+                         {(displayDrawingsByStructure[s.id] || []).length > 0 ? (
                            <div className="space-y-2">
-                             {(drawingsByStructure[s.id] || []).map((drawing) => (
+                             {(displayDrawingsByStructure[s.id] || []).map((drawing) => (
                                <div
                                  key={drawing.id}
                                  onClick={() => navigate(`/plans?structureId=${s.id}&drawingId=${drawing.id}`)}

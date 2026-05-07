@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
-import { CalendarRange, CheckCircle2, Clock3, Loader2, MessageSquareText, Phone, Presentation } from 'lucide-react';
-import { authService, hierarchyService, notificationService, progressService } from '../services/api';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { CalendarRange, Camera, CheckCircle2, Clock3, Loader2, MessageSquareText, Phone, Plus, Presentation, Upload, Video, X } from 'lucide-react';
+import { authService, hierarchyService, notificationService, progressService, systemService } from '../services/api';
 import ElementPresentationOverlay from '../components/ElementPresentationOverlay';
 
 type GanttDay = {
@@ -37,6 +37,14 @@ type DashboardSummary = {
   elements_status: { started_count: number; total_declared: number };
   active_groups: ActiveGroup[];
   active_rows: ActiveRow[];
+};
+
+type ProgressMediaItem = {
+  file: File;
+  source: string;
+  capturedAt?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
 };
 
 type StructureDraft = {
@@ -122,6 +130,15 @@ export default function Dashboard() {
   const [draft, setDraft] = useState<StructureDraft | null>(null);
   const [customMessage, setCustomMessage] = useState('');
   const [presentationElementId, setPresentationElementId] = useState<string | null>(null);
+  const [progressRow, setProgressRow] = useState<ActiveRow | null>(null);
+  const [progressDidCureToday, setProgressDidCureToday] = useState<'yes' | 'no'>('yes');
+  const [progressRemark, setProgressRemark] = useState('');
+  const [progressSubmitting, setProgressSubmitting] = useState(false);
+  const [progressMediaFiles, setProgressMediaFiles] = useState<ProgressMediaItem[]>([]);
+  const [manualFileEntryEnabled, setManualFileEntryEnabled] = useState(true);
+  const progressUploadInputRef = useRef<HTMLInputElement | null>(null);
+  const progressPhotoInputRef = useRef<HTMLInputElement | null>(null);
+  const progressVideoInputRef = useRef<HTMLInputElement | null>(null);
   const currentUser = authService.getCurrentUser();
   const isMonitor = currentUser?.role === 'monitor';
   const isContractor = currentUser?.role === 'contractor';
@@ -135,6 +152,8 @@ export default function Dashboard() {
       setLoading(true);
       const summaryResponse = await progressService.getDashboardSummary();
       setSummary(summaryResponse);
+      const settings = await systemService.getSettings();
+      setManualFileEntryEnabled(settings.manual_file_entry_enabled);
 
       if (isMonitor && currentUser?.user_id) {
         const projects = await hierarchyService.getProjects(currentUser.user_id);
@@ -204,6 +223,98 @@ export default function Dashboard() {
       alert(error.response?.data?.detail || 'Failed to send instruction.');
     } finally {
       setMessageSaving(false);
+    }
+  };
+
+  const validateMediaFiles = async (files: File[]) => {
+    const acceptedImages = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/bmp', 'image/gif']);
+    for (const file of files) {
+      if (file.type.startsWith('image/')) {
+        if (!acceptedImages.has(file.type)) {
+          throw new Error(`Unsupported image format for "${file.name}".`);
+        }
+        continue;
+      }
+      if (file.type.startsWith('video/')) {
+        const duration = await new Promise<number>((resolve, reject) => {
+          const video = document.createElement('video');
+          const objectUrl = URL.createObjectURL(file);
+          video.preload = 'metadata';
+          video.onloadedmetadata = () => {
+            URL.revokeObjectURL(objectUrl);
+            resolve(Number(video.duration || 0));
+          };
+          video.onerror = () => {
+            URL.revokeObjectURL(objectUrl);
+            reject(new Error(`Unable to inspect video "${file.name}".`));
+          };
+          video.src = objectUrl;
+        });
+        if (duration > 120) {
+          throw new Error(`Video "${file.name}" is longer than 2 minutes.`);
+        }
+        continue;
+      }
+      throw new Error(`Unsupported file type for "${file.name}".`);
+    }
+  };
+
+  const appendProgressFiles = async (fileList: FileList | null, source: string) => {
+    if (!fileList?.length) return;
+    const files = Array.from(fileList);
+    await validateMediaFiles(files);
+    const capturedAt = new Date().toISOString();
+    setProgressMediaFiles((current) => [
+      ...current,
+      ...files.map((file) => ({
+        file,
+        source,
+        capturedAt,
+      })),
+    ]);
+  };
+
+  const openProgressModal = (row: ActiveRow) => {
+    if (row.is_completed) return;
+    setProgressRow(row);
+    setProgressDidCureToday('yes');
+    setProgressRemark('');
+    setProgressMediaFiles([]);
+  };
+
+  const closeProgressModal = () => {
+    setProgressRow(null);
+    setProgressDidCureToday('yes');
+    setProgressRemark('');
+    setProgressMediaFiles([]);
+  };
+
+  const submitProgressFromDashboard = async () => {
+    if (!progressRow) return;
+    const formData = new FormData();
+    formData.append('drawing_element_id', progressRow.drawing_element_id);
+    formData.append('progress_date', localIsoDate());
+    formData.append('did_cure_today', progressDidCureToday);
+    formData.append('remark', progressRemark);
+    formData.append('media_metadata_json', JSON.stringify(progressMediaFiles.map((item) => ({
+      name: item.file.name,
+      source: item.source,
+      capturedAt: item.capturedAt ?? null,
+      latitude: item.latitude ?? null,
+      longitude: item.longitude ?? null,
+    }))));
+    progressMediaFiles.forEach((item) => formData.append('files', item.file));
+
+    try {
+      setProgressSubmitting(true);
+      await progressService.createEntry(formData);
+      closeProgressModal();
+      await loadDashboard();
+      alert('Today progress added successfully.');
+    } catch (error: any) {
+      alert(error.response?.data?.detail || 'Failed to save today progress.');
+    } finally {
+      setProgressSubmitting(false);
     }
   };
 
@@ -326,14 +437,25 @@ export default function Dashboard() {
                             </span>
                           </td>
                           <td className="px-6 py-5 text-right">
-                            <button
-                              type="button"
-                              onClick={() => setPresentationElementId(row.drawing_element_id)}
-                              title="Presentation"
-                              className="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-600 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50"
-                            >
-                              <Presentation className="h-4 w-4 text-blue-500" />
-                            </button>
+                            <div className="flex justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => openProgressModal(row)}
+                                disabled={row.is_completed}
+                                title={row.is_completed ? 'Completed' : 'Add Progress'}
+                                className="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-600 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                <Plus className="h-4 w-4 text-emerald-600" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setPresentationElementId(row.drawing_element_id)}
+                                title="Presentation"
+                                className="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-600 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50"
+                              >
+                                <Presentation className="h-4 w-4 text-blue-500" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -461,6 +583,143 @@ export default function Dashboard() {
         drawingElementId={presentationElementId}
         onClose={() => setPresentationElementId(null)}
       />
+
+      {progressRow && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/30 px-4">
+          <div className="max-h-[92dvh] w-full max-w-2xl overflow-y-auto rounded-[28px] border border-slate-200 bg-white p-4 shadow-2xl sm:p-6">
+            <div className="mb-5 flex items-start justify-between">
+              <div>
+                <h3 className="text-xl font-black tracking-tight text-slate-900 sm:text-2xl">Post Progress</h3>
+                <p className="mt-1 text-xs font-medium text-slate-500 sm:text-sm">
+                  {progressRow.element_name} • {progressRow.plan_name} / {progressRow.page_name}
+                </p>
+              </div>
+              <button onClick={closeProgressModal} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="grid gap-4 sm:gap-5 md:grid-cols-2">
+              <div>
+                <label className="mb-2 block text-[11px] font-black uppercase tracking-widest text-slate-500">Did Cured Today?</label>
+                <select
+                  value={progressDidCureToday}
+                  onChange={(e) => setProgressDidCureToday(e.target.value as 'yes' | 'no')}
+                  className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-500"
+                >
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-[11px] font-black uppercase tracking-widest text-slate-500">Today</label>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-black text-slate-700">
+                  {formatShortDate(localIsoDate())}
+                </div>
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="mb-2 block text-[11px] font-black uppercase tracking-widest text-slate-500">Remark</label>
+                <textarea
+                  value={progressRemark}
+                  onChange={(e) => setProgressRemark(e.target.value)}
+                  rows={4}
+                  className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-500"
+                  placeholder="Add your progress note"
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="mb-2 block text-[11px] font-black uppercase tracking-widest text-slate-500">Evidence</label>
+                <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+                  {manualFileEntryEnabled && (
+                    <>
+                      <input
+                        ref={progressUploadInputRef}
+                        type="file"
+                        accept=".jpg,.jpeg,.png,.webp,.bmp,.gif,.mp4,.webm,.mov,.avi,image/jpeg,image/png,image/webp,image/bmp,image/gif,video/*"
+                        multiple
+                        className="hidden"
+                        onChange={(e) => { void appendProgressFiles(e.target.files, 'manual-upload'); e.currentTarget.value = ''; }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => progressUploadInputRef.current?.click()}
+                        className="inline-flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-black text-slate-700 hover:bg-slate-50"
+                      >
+                        <Upload className="h-4 w-4 text-blue-500" />
+                        Upload Photo / Video
+                      </button>
+                    </>
+                  )}
+                  <input
+                    ref={progressPhotoInputRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="hidden"
+                    onChange={(e) => { void appendProgressFiles(e.target.files, 'camera-photo'); e.currentTarget.value = ''; }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => progressPhotoInputRef.current?.click()}
+                    className="inline-flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-black text-slate-700 hover:bg-slate-50"
+                  >
+                    <Camera className="h-4 w-4 text-blue-500" />
+                    Take Photo
+                  </button>
+                  <input
+                    ref={progressVideoInputRef}
+                    type="file"
+                    accept="video/*"
+                    capture="environment"
+                    className="hidden"
+                    onChange={(e) => { void appendProgressFiles(e.target.files, 'camera-video'); e.currentTarget.value = ''; }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => progressVideoInputRef.current?.click()}
+                    className="inline-flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-black text-slate-700 hover:bg-slate-50"
+                  >
+                    <Video className="h-4 w-4 text-blue-500" />
+                    Record Video
+                  </button>
+                </div>
+                <p className="mt-2 text-xs font-medium text-slate-400">Multiple files allowed. Videos must be 2 minutes or shorter.</p>
+                {progressMediaFiles.length > 0 && (
+                  <div className="mt-3 space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                    {progressMediaFiles.map((item, index) => (
+                      <div key={`${item.file.name}-${index}`} className="text-sm font-bold text-slate-600">
+                        {item.file.name}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={closeProgressModal}
+                className="rounded-2xl border border-slate-300 px-4 py-2.5 text-sm font-black text-slate-600 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => { void submitProgressFromDashboard(); }}
+                disabled={progressSubmitting}
+                className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-2.5 text-sm font-black text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {progressSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                Save Progress
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

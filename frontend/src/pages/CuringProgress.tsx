@@ -257,6 +257,83 @@ export default function CuringProgress() {
     });
   };
 
+  const requestLocationPermissionPrompt = async () => {
+    if (!navigator.geolocation) return false;
+    return new Promise<boolean>((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        () => resolve(true),
+        () => resolve(false),
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
+      );
+    });
+  };
+
+  const ensureLocationPermissionForCapture = async () => {
+    const permissionsApi = (navigator as any).permissions;
+    if (permissionsApi?.query) {
+      try {
+        const status = await permissionsApi.query({ name: 'geolocation' as PermissionName });
+        if (status.state === 'granted') return true;
+        if (status.state === 'prompt') {
+          const confirmed = window.confirm('Location access is required for captured photo/video. Tap OK to open the browser location permission prompt.');
+          if (!confirmed) return false;
+          const granted = await requestLocationPermissionPrompt();
+          if (granted) return true;
+        }
+      } catch {
+        // fall through to direct prompt
+      }
+    }
+    const granted = await requestLocationPermissionPrompt();
+    if (granted) return true;
+    alert('Location access is required. Browser apps cannot open site settings automatically. Open your browser site settings, allow Location for this site, then try again.');
+    return false;
+  };
+
+  const requestCameraPermissionPrompt = async (mode: 'photo' | 'video') => {
+    if (!navigator.mediaDevices?.getUserMedia) return false;
+    let stream: MediaStream | null = null;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+        audio: mode === 'video',
+      });
+      return true;
+    } catch {
+      return false;
+    } finally {
+      stream?.getTracks().forEach((track) => track.stop());
+    }
+  };
+
+  const ensureCameraPermissionForCapture = async (mode: 'photo' | 'video') => {
+    const permissionsApi = (navigator as any).permissions;
+    const cameraPermissionName = 'camera' as PermissionName;
+    if (permissionsApi?.query) {
+      try {
+        const cameraStatus = await permissionsApi.query({ name: cameraPermissionName });
+        const microphoneStatus = mode === 'video'
+          ? await permissionsApi.query({ name: 'microphone' as PermissionName })
+          : null;
+        const needsPrompt = cameraStatus.state === 'prompt' || microphoneStatus?.state === 'prompt';
+        const fullyGranted = cameraStatus.state === 'granted' && (!microphoneStatus || microphoneStatus.state === 'granted');
+        if (fullyGranted) return true;
+        if (needsPrompt) {
+          const confirmed = window.confirm(`Camera${mode === 'video' ? ' and microphone' : ''} access is required. Tap OK to open the browser permission prompt.`);
+          if (!confirmed) return false;
+          const granted = await requestCameraPermissionPrompt(mode);
+          if (granted) return true;
+        }
+      } catch {
+        // fall through to direct prompt
+      }
+    }
+    const granted = await requestCameraPermissionPrompt(mode);
+    if (granted) return true;
+    alert(`Camera${mode === 'video' ? ' / microphone' : ''} access is required. Browser apps cannot open site settings automatically. Open your browser site settings, allow the required permission, then try again.`);
+    return false;
+  };
+
   const formatOffsetTimestamp = (baseUtcMs: number, offsetHours: number) => {
     const shifted = new Date(baseUtcMs + offsetHours * 3600000);
     const year = shifted.getUTCFullYear();
@@ -297,15 +374,6 @@ export default function CuringProgress() {
     };
   };
 
-  const ensureLocationEnabledBeforeCapture = async () => {
-    const location = await getCurrentCaptureLocation();
-    if (location.latitude == null || location.longitude == null) {
-      alert('Please enable browser/site geolocation before taking photo or video, then try again.');
-      return false;
-    }
-    return true;
-  };
-
   const openProgressModal = (row: ProgressRow) => {
     setActiveRow(row);
     setDidCureToday('yes');
@@ -334,8 +402,10 @@ export default function CuringProgress() {
   };
 
   const openCameraCapture = async (mode: 'photo' | 'video') => {
-    const allowed = await ensureLocationEnabledBeforeCapture();
-    if (!allowed) return;
+    const locationAllowed = await ensureLocationPermissionForCapture();
+    if (!locationAllowed) return;
+    const cameraAllowed = await ensureCameraPermissionForCapture(mode);
+    if (!cameraAllowed) return;
     discardCameraResultRef.current = false;
     setCameraMode(mode);
     setCameraModalOpen(true);
@@ -548,14 +618,25 @@ export default function CuringProgress() {
                           </button>
                         </td>
                         <td className="px-6 py-5 text-right">
-                          <button
-                            type="button"
-                            onClick={() => setPresentationElementId(row.drawing_element_id)}
-                            title="Presentation"
-                            className="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-600 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50"
-                          >
-                            <Presentation className="h-4 w-4 text-blue-500" />
-                          </button>
+                          <div className="flex justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => openProgressModal(row)}
+                              disabled={row.is_completed}
+                              title={row.is_completed ? 'Completed' : 'Add Progress'}
+                              className="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-600 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              <Plus className="h-4 w-4 text-emerald-600" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setPresentationElementId(row.drawing_element_id)}
+                              title="Presentation"
+                              className="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-600 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50"
+                            >
+                              <Presentation className="h-4 w-4 text-blue-500" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -569,11 +650,11 @@ export default function CuringProgress() {
 
       {activeRow && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/25 px-4">
-          <div className="w-full max-w-2xl rounded-[28px] border border-slate-200 bg-white p-6 shadow-2xl">
+          <div className="max-h-[92dvh] w-full max-w-2xl overflow-y-auto rounded-[28px] border border-slate-200 bg-white p-4 shadow-2xl sm:p-6">
             <div className="mb-5 flex items-start justify-between">
               <div>
-                <h3 className="text-2xl font-black tracking-tight text-slate-900">Today&apos;s Progress</h3>
-                <p className="mt-1 text-sm font-medium text-slate-500">{activeRow.element_name} • {activeRow.plan_name} / {activeRow.page_name}</p>
+                <h3 className="text-xl font-black tracking-tight text-slate-900 sm:text-2xl">Today&apos;s Progress</h3>
+                <p className="mt-1 text-xs font-medium text-slate-500 sm:text-sm">{activeRow.element_name} • {activeRow.plan_name} / {activeRow.page_name}</p>
               </div>
               <button onClick={() => setActiveRow(null)} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
                 <X className="h-5 w-5" />
@@ -606,7 +687,7 @@ export default function CuringProgress() {
 
               <div>
                 <label className="mb-2 block text-[11px] font-black uppercase tracking-widest text-slate-500">Evidence</label>
-                <div className="flex flex-wrap gap-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
                   {manualFileEntryEnabled && (
                     <>
                       <input
@@ -658,7 +739,7 @@ export default function CuringProgress() {
               </div>
             </div>
 
-            <div className="mt-6 flex justify-end gap-3">
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
               <button
                 type="button"
                 onClick={() => setActiveRow(null)}
@@ -682,13 +763,13 @@ export default function CuringProgress() {
 
       {cameraModalOpen && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-3xl rounded-[28px] border border-slate-200 bg-white p-6 shadow-2xl">
+          <div className="max-h-[92dvh] w-full max-w-3xl overflow-y-auto rounded-[28px] border border-slate-200 bg-white p-4 shadow-2xl sm:p-6">
             <div className="mb-5 flex items-start justify-between">
               <div>
-                <h3 className="text-2xl font-black tracking-tight text-slate-900">
+                <h3 className="text-xl font-black tracking-tight text-slate-900 sm:text-2xl">
                   {cameraMode === 'photo' ? 'Take Photo' : 'Record Video'}
                 </h3>
-                <p className="mt-1 text-sm font-medium text-slate-500">
+                <p className="mt-1 text-xs font-medium text-slate-500 sm:text-sm">
                   Camera capture opens directly here and saves into today&apos;s progress evidence.
                 </p>
               </div>
@@ -713,7 +794,7 @@ export default function CuringProgress() {
               </div>
             </div>
 
-            <div className="mt-6 flex justify-end gap-3">
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
               <button
                 type="button"
                 onClick={closeCameraModal}

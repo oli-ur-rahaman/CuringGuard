@@ -238,7 +238,7 @@ export default function Contractors() {
   }
 
   return (
-    <div className="relative flex h-[calc(100vh-4rem)] w-full flex-col overflow-y-auto px-5 py-4 md:px-8 md:py-8 xl:px-10">
+    <div className="relative flex h-[calc(100vh-4rem)] min-h-0 w-full flex-col overflow-hidden px-5 py-4 md:px-8 md:py-8 xl:px-10">
       <div className="mb-6 flex flex-col justify-between gap-4 md:mb-8 md:flex-row md:items-center">
         <div>
           <h1 className="flex items-center gap-3 text-2xl font-extrabold tracking-tight text-slate-900 md:text-3xl">
@@ -256,17 +256,17 @@ export default function Contractors() {
         </button>
       </div>
 
-      <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm shadow-slate-200/50">
-        <div className="w-full">
-          <table className="w-full table-fixed border-collapse text-left">
+      <div className="min-h-0 flex-1 overflow-auto rounded-3xl border border-slate-200 bg-white shadow-sm shadow-slate-200/50">
+          <div className="w-full overflow-x-auto">
+          <table className="min-w-[980px] w-full border-collapse text-left">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50">
-                <th className="w-[36%] p-5 pl-8 text-[11px] font-extrabold uppercase tracking-widest text-slate-400">Contractor</th>
-                <th className="w-[16%] p-5 text-[11px] font-extrabold uppercase tracking-widest text-slate-400">WhatsApp</th>
-                <th className="w-[10%] p-5 text-[11px] font-extrabold uppercase tracking-widest text-slate-400">Status</th>
-                <th className="w-[8%] p-5 text-[11px] font-extrabold uppercase tracking-widest text-slate-400">Structures</th>
-                <th className="w-[12%] p-5 text-[11px] font-extrabold uppercase tracking-widest text-slate-400">Curable Elements</th>
-                <th className="w-[18%] p-5 pr-8 text-right text-[11px] font-extrabold uppercase tracking-widest text-slate-400">Actions</th>
+                <th className="sticky top-0 z-10 w-[36%] bg-slate-50 p-5 pl-8 text-[11px] font-extrabold uppercase tracking-widest text-slate-400">Contractor</th>
+                <th className="sticky top-0 z-10 w-[16%] bg-slate-50 p-5 text-[11px] font-extrabold uppercase tracking-widest text-slate-400">WhatsApp</th>
+                <th className="sticky top-0 z-10 w-[10%] bg-slate-50 p-5 text-[11px] font-extrabold uppercase tracking-widest text-slate-400">Status</th>
+                <th className="sticky top-0 z-10 w-[8%] bg-slate-50 p-5 text-[11px] font-extrabold uppercase tracking-widest text-slate-400">Structures</th>
+                <th className="sticky top-0 z-10 w-[12%] bg-slate-50 p-5 text-[11px] font-extrabold uppercase tracking-widest text-slate-400">Curable Elements</th>
+                <th className="sticky top-0 z-10 w-[18%] bg-slate-50 p-5 pr-8 text-right text-[11px] font-extrabold uppercase tracking-widest text-slate-400">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -342,7 +342,7 @@ export default function Contractors() {
               })}
             </tbody>
           </table>
-        </div>
+          </div>
       </div>
 
       {showCreateModal && renderModalShell(

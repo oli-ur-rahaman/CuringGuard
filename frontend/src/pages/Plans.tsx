@@ -442,6 +442,7 @@ export default function Plans() {
   const [uploadMode, setUploadMode] = useState<'existing' | 'create'>('existing');
   const [showDrawing, setShowDrawing] = useState(true);
   const [thumbnailHover, setThumbnailHover] = useState(false);
+  const [allowThumbnailExpand, setAllowThumbnailExpand] = useState(() => (typeof window === 'undefined' ? true : window.innerWidth >= 1280));
   const [activeStructureId, setActiveStructureId] = useState(initialStructureId);
   const [explorerGroups, setExplorerGroups] = useState<ExplorerGroup[]>([]);
   const [expandedStructureIds, setExpandedStructureIds] = useState<number[]>([]);
@@ -680,6 +681,83 @@ export default function Plans() {
     });
   };
 
+  const requestLocationPermissionPrompt = async () => {
+    if (!navigator.geolocation) return false;
+    return new Promise<boolean>((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        () => resolve(true),
+        () => resolve(false),
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
+      );
+    });
+  };
+
+  const ensureLocationPermissionForCapture = async () => {
+    const permissionsApi = (navigator as any).permissions;
+    if (permissionsApi?.query) {
+      try {
+        const status = await permissionsApi.query({ name: 'geolocation' as PermissionName });
+        if (status.state === 'granted') return true;
+        if (status.state === 'prompt') {
+          const confirmed = window.confirm('Location access is required for captured photo/video. Tap OK to open the browser location permission prompt.');
+          if (!confirmed) return false;
+          const granted = await requestLocationPermissionPrompt();
+          if (granted) return true;
+        }
+      } catch {
+        // fall through to direct prompt
+      }
+    }
+    const granted = await requestLocationPermissionPrompt();
+    if (granted) return true;
+    alert('Location access is required. Browser apps cannot open site settings automatically. Open your browser site settings, allow Location for this site, then try again.');
+    return false;
+  };
+
+  const requestCameraPermissionPrompt = async (mode: 'photo' | 'video') => {
+    if (!navigator.mediaDevices?.getUserMedia) return false;
+    let stream: MediaStream | null = null;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+        audio: mode === 'video',
+      });
+      return true;
+    } catch {
+      return false;
+    } finally {
+      stream?.getTracks().forEach((track) => track.stop());
+    }
+  };
+
+  const ensureCameraPermissionForCapture = async (mode: 'photo' | 'video') => {
+    const permissionsApi = (navigator as any).permissions;
+    const cameraPermissionName = 'camera' as PermissionName;
+    if (permissionsApi?.query) {
+      try {
+        const cameraStatus = await permissionsApi.query({ name: cameraPermissionName });
+        const microphoneStatus = mode === 'video'
+          ? await permissionsApi.query({ name: 'microphone' as PermissionName })
+          : null;
+        const needsPrompt = cameraStatus.state === 'prompt' || microphoneStatus?.state === 'prompt';
+        const fullyGranted = cameraStatus.state === 'granted' && (!microphoneStatus || microphoneStatus.state === 'granted');
+        if (fullyGranted) return true;
+        if (needsPrompt) {
+          const confirmed = window.confirm(`Camera${mode === 'video' ? ' and microphone' : ''} access is required. Tap OK to open the browser permission prompt.`);
+          if (!confirmed) return false;
+          const granted = await requestCameraPermissionPrompt(mode);
+          if (granted) return true;
+        }
+      } catch {
+        // fall through to direct prompt
+      }
+    }
+    const granted = await requestCameraPermissionPrompt(mode);
+    if (granted) return true;
+    alert(`Camera${mode === 'video' ? ' / microphone' : ''} access is required. Browser apps cannot open site settings automatically. Open your browser site settings, allow the required permission, then try again.`);
+    return false;
+  };
+
   const formatOffsetTimestamp = (baseUtcMs: number, offsetHours: number) => {
     const shifted = new Date(baseUtcMs + offsetHours * 3600000);
     const year = shifted.getUTCFullYear();
@@ -716,15 +794,6 @@ export default function Plans() {
       longitude: location.longitude,
       capturedAt: location.timestamp ? formatOffsetTimestamp(location.timestamp, 6) : resolveFallbackTimestamp(),
     };
-  };
-
-  const ensureLocationEnabledBeforeCapture = async () => {
-    const location = await getCurrentCaptureLocation();
-    if (location.latitude == null || location.longitude == null) {
-      alert('Please enable browser/site geolocation before taking photo or video, then try again.');
-      return false;
-    }
-    return true;
   };
 
   const resetProgressModalState = () => {
@@ -784,8 +853,10 @@ export default function Plans() {
   };
 
   const openProgressCameraCapture = async (mode: 'photo' | 'video') => {
-    const allowed = await ensureLocationEnabledBeforeCapture();
-    if (!allowed) return;
+    const locationAllowed = await ensureLocationPermissionForCapture();
+    if (!locationAllowed) return;
+    const cameraAllowed = await ensureCameraPermissionForCapture(mode);
+    if (!cameraAllowed) return;
     progressDiscardCameraResultRef.current = false;
     setProgressCameraMode(mode);
     setProgressCameraModalOpen(true);
@@ -1617,6 +1688,17 @@ export default function Plans() {
   }, [activeToolConfig]);
 
   useEffect(() => {
+    const handleResize = () => {
+      const next = window.innerWidth >= 1280;
+      setAllowThumbnailExpand(next);
+      if (!next) setThumbnailHover(false);
+    };
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
     const handleEscapeReset = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       setDrawingSession(null);
@@ -1712,7 +1794,6 @@ export default function Plans() {
   const updateTouchTracking = (clientX: number, clientY: number) => {
     const nextPagePoint = pagePointFromEvent(clientX, clientY);
     setMousePage(nextPagePoint);
-    setCursorContrastColor(resolveCursorContrastColor(nextPagePoint));
     setMouseViewport((current) => ({ ...current, visible: false }));
     return nextPagePoint;
   };
@@ -1780,6 +1861,60 @@ export default function Plans() {
         y: (midViewport.y - position.y) / scale,
       },
     });
+  };
+
+  const beginSingleTouchGesture = (touchId: number, touchPoint: Point) => {
+    const pagePoint = updateTouchTracking(touchPoint.x, touchPoint.y);
+
+    if (activeTool === 'pan') {
+      setTouchGesture({
+        kind: 'oneFingerPan',
+        pointerId: touchId,
+        startClient: { x: touchPoint.x, y: touchPoint.y },
+        startPosition: { ...position },
+      });
+      return;
+    }
+
+    if (activeTool === 'select') {
+      setTouchGesture({
+        kind: 'selectionPending',
+        pointerId: touchId,
+        startClient: { x: touchPoint.x, y: touchPoint.y },
+        startPage: pagePoint,
+      });
+      clearTouchLongPressTimer();
+      touchLongPressTimeoutRef.current = window.setTimeout(() => {
+        const gesture = touchGestureRef.current;
+        if (gesture.kind !== 'selectionPending' || gesture.pointerId !== touchId) return;
+        startSelection(gesture.startPage, false);
+        setTouchGesture({
+          kind: 'selectionBox',
+          pointerId: gesture.pointerId,
+          startClient: gesture.startClient,
+          startPage: gesture.startPage,
+        });
+      }, TOUCH_LONG_PRESS_MS);
+      return;
+    }
+
+    if (activeTool === 'point' || activeTool === 'rect' || activeTool === 'line' || activeTool === 'polygon' || activeTool === 'calibrate') {
+      const snapshot = captureTouchMagnifierSnapshot();
+      setTouchMagnifierFromPointer(touchPoint.x, touchPoint.y, pagePoint, snapshot);
+      setTouchGesture({
+        kind: 'drawPlacement',
+        pointerId: touchId,
+        tool: activeTool,
+        startClient: { x: touchPoint.x, y: touchPoint.y },
+        pagePoint,
+      });
+      if (drawingSessionRef.current?.tool === 'rect') {
+        setDrawingSessionState({ ...drawingSessionRef.current, current: pagePoint });
+      }
+      if (drawingSessionRef.current?.tool === 'calibrate') {
+        setDrawingSessionState({ ...drawingSessionRef.current, current: pagePoint });
+      }
+    }
   };
 
   const updateTwoFingerNavigation = (gesture: Extract<TouchGesture, { kind: 'twoFingerNav' }>) => {
@@ -2061,64 +2196,14 @@ export default function Plans() {
       activeTouchPointsRef.current.set(touch.identifier, { x: touch.clientX, y: touch.clientY });
     }
     const touchPoints = Array.from(activeTouchPointsRef.current.entries());
-    const currentGesture = touchGestureRef.current;
-    if (touchPoints.length === 2 && currentGesture.kind !== 'drawPlacement') {
+    if (touchPoints.length === 2) {
+      setTouchMagnifier(null);
       startTwoFingerNavigation();
       return;
     }
     if (touchPoints.length > 1) return;
     const [touchId, touchPoint] = touchPoints[0];
-    const pagePoint = updateTouchTracking(touchPoint.x, touchPoint.y);
-
-    if (activeTool === 'pan') {
-      setTouchGesture({
-        kind: 'oneFingerPan',
-        pointerId: touchId,
-        startClient: { x: touchPoint.x, y: touchPoint.y },
-        startPosition: { ...position },
-      });
-      return;
-    }
-
-    if (activeTool === 'select') {
-      setTouchGesture({
-        kind: 'selectionPending',
-        pointerId: touchId,
-        startClient: { x: touchPoint.x, y: touchPoint.y },
-        startPage: pagePoint,
-      });
-      clearTouchLongPressTimer();
-      touchLongPressTimeoutRef.current = window.setTimeout(() => {
-        const gesture = touchGestureRef.current;
-        if (gesture.kind !== 'selectionPending' || gesture.pointerId !== touchId) return;
-        startSelection(gesture.startPage, false);
-        setTouchGesture({
-          kind: 'selectionBox',
-          pointerId: gesture.pointerId,
-          startClient: gesture.startClient,
-          startPage: gesture.startPage,
-        });
-      }, TOUCH_LONG_PRESS_MS);
-      return;
-    }
-
-    if (activeTool === 'point' || activeTool === 'rect' || activeTool === 'line' || activeTool === 'polygon' || activeTool === 'calibrate') {
-      const snapshot = captureTouchMagnifierSnapshot();
-      setTouchMagnifierFromPointer(touchPoint.x, touchPoint.y, pagePoint, snapshot);
-      setTouchGesture({
-        kind: 'drawPlacement',
-        pointerId: touchId,
-        tool: activeTool,
-        startClient: { x: touchPoint.x, y: touchPoint.y },
-        pagePoint,
-      });
-      if (drawingSessionRef.current?.tool === 'rect') {
-        setDrawingSessionState({ ...drawingSessionRef.current, current: pagePoint });
-      }
-      if (drawingSessionRef.current?.tool === 'calibrate') {
-        setDrawingSessionState({ ...drawingSessionRef.current, current: pagePoint });
-      }
-    }
+    beginSingleTouchGesture(touchId, touchPoint);
   };
 
   const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
@@ -2130,7 +2215,8 @@ export default function Plans() {
       updateTwoFingerNavigation(gesture);
       return;
     }
-    if (activeTouchPointsRef.current.size >= 2 && gesture.kind !== 'drawPlacement') {
+    if (activeTouchPointsRef.current.size >= 2) {
+      setTouchMagnifier(null);
       startTwoFingerNavigation();
       return;
     }
@@ -2181,7 +2267,12 @@ export default function Plans() {
     clearTouchLongPressTimer();
 
     if (gesture.kind === 'twoFingerNav') {
-      if (activeTouchPointsRef.current.size === 0) resetTouchInteraction();
+      if (activeTouchPointsRef.current.size === 1) {
+        const [remainingId, remainingPoint] = Array.from(activeTouchPointsRef.current.entries())[0];
+        beginSingleTouchGesture(remainingId, remainingPoint);
+      } else if (activeTouchPointsRef.current.size === 0) {
+        resetTouchInteraction();
+      }
       return;
     }
     if (!pagePoint) {
@@ -2656,7 +2747,19 @@ export default function Plans() {
       return (
         <g key={annotation.id}>
           <rect x={x} y={y} width={width} height={height} fill={fill} stroke={stroke} strokeWidth={strokeWidth} />
-          {annotation.memberName && <text x={x + 8} y={y + 20} fill={stroke} fontSize="15" fontWeight="700">{annotation.memberName}</text>}
+          {annotation.memberName && (
+            <text
+              x={x + 8}
+              y={y + 20}
+              fill={stroke}
+              fontSize="15"
+              fontWeight="700"
+              pointerEvents="none"
+              style={{ userSelect: 'none', WebkitUserSelect: 'none' }}
+            >
+              {annotation.memberName}
+            </text>
+          )}
         </g>
       );
     }
@@ -2670,7 +2773,19 @@ export default function Plans() {
             stroke={stroke}
             strokeWidth={strokeWidth}
           />
-          {annotation.memberName && <text x={annotation.points[0].x + 8} y={annotation.points[0].y - 8} fill={stroke} fontSize="15" fontWeight="700">{annotation.memberName}</text>}
+          {annotation.memberName && (
+            <text
+              x={annotation.points[0].x + 8}
+              y={annotation.points[0].y - 8}
+              fill={stroke}
+              fontSize="15"
+              fontWeight="700"
+              pointerEvents="none"
+              style={{ userSelect: 'none', WebkitUserSelect: 'none' }}
+            >
+              {annotation.memberName}
+            </text>
+          )}
         </g>
       );
     }
@@ -2697,7 +2812,19 @@ export default function Plans() {
             strokeLinejoin="round"
             strokeLinecap="round"
           />
-          {annotation.memberName && <text x={annotation.points[0].x + 8} y={annotation.points[0].y - 8} fill={stroke} fontSize="15" fontWeight="700">{annotation.memberName}</text>}
+          {annotation.memberName && (
+            <text
+              x={annotation.points[0].x + 8}
+              y={annotation.points[0].y - 8}
+              fill={stroke}
+              fontSize="15"
+              fontWeight="700"
+              pointerEvents="none"
+              style={{ userSelect: 'none', WebkitUserSelect: 'none' }}
+            >
+              {annotation.memberName}
+            </text>
+          )}
         </g>
       );
     }
@@ -2746,7 +2873,19 @@ export default function Plans() {
             strokeWidth={2}
           />
         )}
-        {annotation.memberName && <text x={annotation.points[0].x + 10} y={annotation.points[0].y - 10} fill={stroke} fontSize="15" fontWeight="700">{annotation.memberName}</text>}
+        {annotation.memberName && (
+          <text
+            x={annotation.points[0].x + 10}
+            y={annotation.points[0].y - 10}
+            fill={stroke}
+            fontSize="15"
+            fontWeight="700"
+            pointerEvents="none"
+            style={{ userSelect: 'none', WebkitUserSelect: 'none' }}
+          >
+            {annotation.memberName}
+          </text>
+        )}
       </g>
     );
   };
@@ -2838,6 +2977,7 @@ export default function Plans() {
     });
   })();
   const isSelectedElementScheduled = Boolean(singleSelectedAnnotation?.curingStartDate && singleSelectedAnnotation?.curingEndDate);
+  const thumbnailExpanded = allowThumbnailExpand && thumbnailHover;
 
   return (
     <div
@@ -2863,11 +3003,11 @@ export default function Plans() {
           setSelectedInfoHovered(false);
         }}
         onContextMenu={(e) => e.preventDefault()}
-        style={{ touchAction: 'none' }}
+        style={{ touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none' }}
       >
         <div
-          className="absolute inset-0 origin-top-left"
-          style={{ transform: `translate(${position.x}px, ${position.y}px) scale(${scale})` }}
+          className="absolute inset-0 origin-top-left select-none"
+          style={{ userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none', transform: `translate(${position.x}px, ${position.y}px) scale(${scale})` }}
         >
           <div
             className="absolute h-[20000px] w-[20000px] -left-[10000px] -top-[10000px] opacity-20"
@@ -2878,7 +3018,7 @@ export default function Plans() {
             className="absolute bg-white shadow-2xl"
             style={{ width: `${canvasSize.width}px`, height: `${canvasSize.height}px`, opacity: showDrawing ? 1 : 0 }}
           />
-          <svg width={canvasSize.width} height={canvasSize.height} viewBox={`0 0 ${canvasSize.width} ${canvasSize.height}`} className="absolute overflow-visible">
+          <svg width={canvasSize.width} height={canvasSize.height} viewBox={`0 0 ${canvasSize.width} ${canvasSize.height}`} className="absolute overflow-visible select-none" style={{ userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none' }}>
             {(pages.find((page) => page.id === activePageId)?.calibrations || []).map((calibration) => {
               const [start, end] = calibration.points;
               const centerX = (start.x + end.x) / 2;
@@ -2894,7 +3034,15 @@ export default function Plans() {
                     strokeWidth={1}
                     strokeLinecap="round"
                   />
-                  <text x={centerX + 8} y={centerY - 8} fill="#c27a2c" fontSize="14" fontWeight="800">
+                  <text
+                    x={centerX + 8}
+                    y={centerY - 8}
+                    fill="#c27a2c"
+                    fontSize="14"
+                    fontWeight="800"
+                    pointerEvents="none"
+                    style={{ userSelect: 'none', WebkitUserSelect: 'none' }}
+                  >
                     {`${calibration.value} ${calibration.unit}`}
                   </text>
                 </g>
@@ -3169,8 +3317,8 @@ export default function Plans() {
         )}
       </div>
 
-      <div className="pointer-events-none absolute left-0 top-[82px] z-10 flex flex-col gap-2 sm:left-6 sm:top-1/2 sm:-translate-y-1/2">
-        <div className="pointer-events-auto flex flex-col gap-2 rounded-r-3xl border border-l-0 border-slate-800 bg-slate-950/80 p-2 shadow-2xl backdrop-blur-xl sm:gap-3 sm:rounded-3xl sm:border-l sm:p-2.5">
+      <div className="pointer-events-none absolute left-0 top-[88px] z-10 flex flex-col gap-2 sm:left-6 sm:top-1/2 sm:-translate-y-1/2">
+        <div className="pointer-events-auto flex flex-col gap-1.5 rounded-r-3xl border border-l-0 border-slate-800 bg-slate-950/80 p-1.5 shadow-2xl backdrop-blur-xl sm:gap-3 sm:rounded-3xl sm:border-l sm:p-2.5">
           {tools.map((tool) => (
             <button
               key={tool.id}
@@ -3184,9 +3332,9 @@ export default function Plans() {
                 }
               }}
               title={tool.label}
-              className={`rounded-2xl p-2.5 transition-all sm:p-3.5 ${activeTool === tool.id ? 'bg-blue-600 text-white shadow-[0_0_20px_rgba(37,99,235,0.4)]' : 'text-slate-500 hover:bg-slate-800 hover:text-white'}`}
+              className={`rounded-2xl p-2 transition-all sm:p-3.5 ${activeTool === tool.id ? 'bg-blue-600 text-white shadow-[0_0_20px_rgba(37,99,235,0.4)]' : 'text-slate-500 hover:bg-slate-800 hover:text-white'}`}
             >
-              <tool.icon className="h-5 w-5 sm:h-6 sm:w-6" />
+              <tool.icon className="h-4 w-4 sm:h-6 sm:w-6" />
             </button>
           ))}
         </div>
@@ -3284,8 +3432,8 @@ export default function Plans() {
         </div>
       </div>
 
-      <div className={`absolute top-0 left-0 z-30 flex h-full w-[380px] flex-col border-r border-slate-200 bg-[linear-gradient(180deg,#fbfdff_0%,#f3f7fc_100%)] shadow-[20px_0_40px_rgba(15,23,42,0.12)] backdrop-blur-xl transition-transform duration-500 ease-in-out ${treeOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="border-b border-slate-200 p-8">
+      <div className={`absolute top-0 left-0 z-30 flex h-full w-[min(92vw,380px)] max-w-full flex-col border-r border-slate-200 bg-[linear-gradient(180deg,#fbfdff_0%,#f3f7fc_100%)] shadow-[20px_0_40px_rgba(15,23,42,0.12)] backdrop-blur-xl transition-transform duration-500 ease-in-out ${treeOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="border-b border-slate-200 p-5 sm:p-8">
           <div className="flex items-center justify-between">
             <h2 className="text-2xl font-black tracking-tight text-slate-900">Plan Manager</h2>
             <button onClick={() => setTreeOpen(false)} className="text-slate-400 transition-colors hover:text-slate-700"><X className="h-6 w-6" /></button>
@@ -3306,7 +3454,7 @@ export default function Plans() {
           </button>
         </div>
 
-        <div className="flex-1 space-y-4 overflow-y-auto p-6 no-scrollbar">
+        <div className="flex-1 space-y-4 overflow-y-auto p-4 sm:p-6 no-scrollbar">
           {explorerGroups.length > 0 ? explorerGroups.map((group) => {
             const expanded = expandedStructureIds.includes(group.id);
             return (
@@ -3377,8 +3525,8 @@ export default function Plans() {
         </div>
       </div>
 
-      <div className={`absolute top-0 right-0 z-30 flex h-full w-[570px] flex-col border-l border-slate-200 bg-[linear-gradient(180deg,#fbfdff_0%,#f3f7fc_100%)] shadow-[-20px_0_40px_rgba(15,23,42,0.12)] backdrop-blur-xl transition-transform duration-500 ease-in-out ${elementsDrawerOpen ? 'translate-x-0' : 'translate-x-full'}`}>
-        <div className="border-b border-slate-200 p-8">
+      <div className={`absolute top-0 right-0 z-30 flex h-full w-[min(96vw,570px)] max-w-full flex-col border-l border-slate-200 bg-[linear-gradient(180deg,#fbfdff_0%,#f3f7fc_100%)] shadow-[-20px_0_40px_rgba(15,23,42,0.12)] backdrop-blur-xl transition-transform duration-500 ease-in-out lg:w-[820px] xl:w-[860px] ${elementsDrawerOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+        <div className="border-b border-slate-200 p-5 sm:p-8">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-2xl font-black tracking-tight text-slate-900">Page Elements</h2>
@@ -3458,7 +3606,9 @@ export default function Plans() {
           </div>
         </div>
 
-        <div className="grid grid-cols-[1.7fr_0.9fr_0.7fr_1.2fr_1.2fr_0.7fr] gap-2 border-b border-slate-200 px-5 py-5 text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">
+        {/* shared scroll plane below */}
+        <div className="hidden overflow-x-auto border-b border-slate-200 no-scrollbar">
+          <div className="grid min-w-[760px] grid-cols-[1.7fr_0.9fr_0.7fr_1.2fr_1.2fr_0.7fr] gap-2 px-5 py-5 text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">
           {[
             ['Name', 'memberName'],
             ['Type', 'elementType'],
@@ -3477,14 +3627,39 @@ export default function Plans() {
             </button>
           ))}
           <div className="text-center">Show</div>
+          </div>
         </div>
 
         <div
-          className="flex-1 overflow-y-auto p-5 no-scrollbar"
+          className="flex-1 overflow-auto no-scrollbar"
           onClick={(event) => {
             if (event.target === event.currentTarget && !(event.ctrlKey || event.metaKey)) setSelectedIds([]);
           }}
         >
+          <div className="min-w-[760px]">
+          <div className="sticky top-0 z-10 border-b border-slate-200 bg-[linear-gradient(180deg,#fbfdff_0%,#f3f7fc_100%)] px-5 py-5 shadow-[0_10px_20px_rgba(15,23,42,0.04)]">
+          <div className="grid grid-cols-[1.7fr_0.9fr_0.7fr_1.2fr_1.2fr_0.7fr] gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">
+          {[
+            ['Name', 'memberName'],
+            ['Type', 'elementType'],
+            ['Days', 'curingDurationDays'],
+            ['Start', 'curingStartDate'],
+            ['End', 'curingEndDate'],
+          ].map(([label, key]) => (
+            <button
+              key={key}
+              onClick={() => handleSortElements(key as ElementSortKey)}
+              className="flex items-center gap-1 text-left transition-colors hover:text-slate-700"
+              type="button"
+            >
+              <span>{label}</span>
+              {elementSort.key === key && <span>{elementSort.direction === 'asc' ? 'â†‘' : 'â†“'}</span>}
+            </button>
+          ))}
+          <div className="text-center">Show</div>
+          </div>
+          </div>
+          <div className="p-5">
           {sortedAnnotations.length > 0 ? sortedAnnotations.map((annotation) => {
             const selected = selectedIds.includes(annotation.id);
             return (
@@ -3548,12 +3723,16 @@ export default function Plans() {
               No elements on this page yet.
             </div>
           )}
+          </div>
+          </div>
         </div>
       </div>
 
       <div
-        className={`absolute bottom-0 left-0 right-0 z-20 border-t border-slate-800 bg-slate-950/95 backdrop-blur-xl transition-all duration-200 ${thumbnailHover ? 'h-[192px]' : 'h-[92px]'}`}
-        onMouseEnter={() => setThumbnailHover(true)}
+        className={`absolute bottom-0 left-0 right-0 z-20 border-t border-slate-800 bg-slate-950/95 backdrop-blur-xl transition-all duration-200 ${thumbnailExpanded ? 'h-[192px]' : 'h-[92px]'}`}
+        onMouseEnter={() => {
+          if (allowThumbnailExpand) setThumbnailHover(true);
+        }}
         onMouseLeave={() => setThumbnailHover(false)}
       >
         <div className="relative h-full px-6 py-3">
@@ -3566,7 +3745,7 @@ export default function Plans() {
               <button
                 key={page.id}
                 onClick={() => setActivePageId(page.id)}
-                className={`${thumbnailHover ? 'w-40' : 'w-[92px]'} relative flex-shrink-0 rounded-2xl border p-2.5 text-left transition-all ${activePageId === page.id ? 'border-blue-500 bg-blue-500/10 shadow-[0_0_20px_rgba(37,99,235,0.18)]' : 'border-slate-800 bg-slate-900 hover:border-slate-700'} ${thumbnailHover ? 'h-[160px]' : 'h-[68px]'}`}
+                className={`${thumbnailExpanded ? 'w-40' : 'w-[92px]'} relative flex-shrink-0 rounded-2xl border p-2.5 text-left transition-all ${activePageId === page.id ? 'border-blue-500 bg-blue-500/10 shadow-[0_0_20px_rgba(37,99,235,0.18)]' : 'border-slate-800 bg-slate-900 hover:border-slate-700'} ${thumbnailExpanded ? 'h-[160px]' : 'h-[68px]'}`}
               >
                 <span
                   onClick={(e) => {
@@ -3590,10 +3769,10 @@ export default function Plans() {
                 >
                   <X className="h-3 w-3" />
                 </span>
-                <div className={`w-full overflow-hidden rounded-xl border border-slate-800 bg-slate-950 ${thumbnailHover ? 'h-24' : 'h-10'}`}>
+                <div className={`w-full overflow-hidden rounded-xl border border-slate-800 bg-slate-950 ${thumbnailExpanded ? 'h-24' : 'h-10'}`}>
                   {renderThumbnail(page)}
                 </div>
-                {thumbnailHover && (
+                {thumbnailExpanded && (
                   <>
                     <div className="mt-3 flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-500">
                       <LayoutTemplate className="h-3.5 w-3.5" />
@@ -3610,11 +3789,11 @@ export default function Plans() {
             <button
               onClick={handleCreateBlankPage}
               disabled={!activeDrawingId || creatingBlankPage}
-              className={`rounded-2xl border border-dashed border-slate-700 bg-slate-900 px-5 text-slate-300 transition-all hover:border-blue-500 hover:text-white disabled:opacity-50 ${thumbnailHover ? 'h-[160px] w-32' : 'h-[68px] w-28'}`}
+              className={`rounded-2xl border border-dashed border-slate-700 bg-slate-900 px-5 text-slate-300 transition-all hover:border-blue-500 hover:text-white disabled:opacity-50 ${thumbnailExpanded ? 'h-[160px] w-32' : 'h-[68px] w-28'}`}
             >
               <div className="flex h-full flex-col items-center justify-center gap-3">
                 {creatingBlankPage ? <Loader2 className="h-5 w-5 animate-spin" /> : <Plus className="h-6 w-6" />}
-                {thumbnailHover && <span className="text-xs font-black uppercase tracking-widest">Add Blank</span>}
+                {thumbnailExpanded && <span className="text-xs font-black uppercase tracking-widest">Add Blank</span>}
               </div>
             </button>
           </div>
@@ -4125,11 +4304,11 @@ export default function Plans() {
 
       {progressTargetAnnotation && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-3xl rounded-[28px] border border-slate-200 bg-white p-6 shadow-2xl">
+          <div className="max-h-[92dvh] w-full max-w-3xl overflow-y-auto rounded-[28px] border border-slate-200 bg-white p-4 shadow-2xl sm:p-6">
             <div className="mb-5 flex items-start justify-between">
               <div>
-                <h3 className="text-2xl font-black tracking-tight text-slate-900">Post Progress</h3>
-                <p className="mt-1 text-sm font-medium text-slate-500">
+                <h3 className="text-xl font-black tracking-tight text-slate-900 sm:text-2xl">Post Progress</h3>
+                <p className="mt-1 text-xs font-medium text-slate-500 sm:text-sm">
                   {progressTargetAnnotation.memberName || progressTargetAnnotation.elementType}
                 </p>
               </div>
@@ -4138,7 +4317,7 @@ export default function Plans() {
               </button>
             </div>
 
-            <div className="grid gap-5 md:grid-cols-2">
+            <div className="grid gap-4 sm:gap-5 md:grid-cols-2">
               <div>
                 <label className="mb-2 block text-[11px] font-black uppercase tracking-widest text-slate-500">Did Cured Today?</label>
                 <select
@@ -4171,7 +4350,7 @@ export default function Plans() {
 
               <div className="md:col-span-2">
                 <label className="mb-2 block text-[11px] font-black uppercase tracking-widest text-slate-500">Evidence</label>
-                <div className="flex flex-wrap gap-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
                   {manualFileEntryEnabled && (
                     <>
                       <input
@@ -4223,7 +4402,7 @@ export default function Plans() {
               </div>
             </div>
 
-            <div className="mt-6 flex justify-end gap-3">
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
               <button
                 type="button"
                 onClick={closeProgressModal}
@@ -4247,13 +4426,13 @@ export default function Plans() {
 
       {progressCameraModalOpen && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-3xl rounded-[28px] border border-slate-200 bg-white p-6 shadow-2xl">
+          <div className="max-h-[92dvh] w-full max-w-3xl overflow-y-auto rounded-[28px] border border-slate-200 bg-white p-4 shadow-2xl sm:p-6">
             <div className="mb-5 flex items-start justify-between">
               <div>
-                <h3 className="text-2xl font-black tracking-tight text-slate-900">
+                <h3 className="text-xl font-black tracking-tight text-slate-900 sm:text-2xl">
                   {progressCameraMode === 'photo' ? 'Take Photo' : 'Record Video'}
                 </h3>
-                <p className="mt-1 text-sm font-medium text-slate-500">
+                <p className="mt-1 text-xs font-medium text-slate-500 sm:text-sm">
                   Camera capture opens directly here and saves into today&apos;s progress evidence.
                 </p>
               </div>
@@ -4278,7 +4457,7 @@ export default function Plans() {
               </div>
             </div>
 
-            <div className="mt-6 flex justify-end gap-3">
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
               <button
                 type="button"
                 onClick={closeProgressCameraModal}

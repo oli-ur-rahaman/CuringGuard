@@ -102,6 +102,8 @@ type Props = {
 };
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
+const pointDistance = (a: Point, b: Point) => Math.hypot(b.x - a.x, b.y - a.y);
+const midpoint = (a: Point, b: Point): Point => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
 
 const hexToRgb = (hex: string) => {
   const normalized = hex.replace('#', '');
@@ -268,6 +270,13 @@ export default function ElementPresentationOverlay({ drawingElementId, open, onC
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [mouseViewport, setMouseViewport] = useState({ x: 0, y: 0, visible: false });
   const objectUrlsRef = useRef<string[]>([]);
+  const activeTouchPointsRef = useRef<Map<number, Point>>(new Map());
+  const touchNavRef = useRef<null | {
+    pointerIds: [number, number];
+    startDistance: number;
+    startScale: number;
+    contentPoint: Point;
+  }>(null);
 
   const timelineDays = payload?.timeline_days || [];
   const selectedDay = timelineDays[selectedDayIndex] || null;
@@ -342,6 +351,47 @@ export default function ElementPresentationOverlay({ drawingElementId, open, onC
     setPosition({
       x: targetX - pageX * clampedScale,
       y: targetY - pageY * clampedScale,
+    });
+  };
+
+  const startTouchNavigation = () => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const touchPoints = Array.from(activeTouchPointsRef.current.entries());
+    if (touchPoints.length < 2) return;
+    const [, first] = touchPoints[0];
+    const [, second] = touchPoints[1];
+    const rect = viewport.getBoundingClientRect();
+    const midClient = midpoint(first, second);
+    const midViewport = { x: midClient.x - rect.left, y: midClient.y - rect.top };
+    const distance = Math.max(pointDistance(first, second), 1);
+    touchNavRef.current = {
+      pointerIds: [touchPoints[0][0], touchPoints[1][0]],
+      startDistance: distance,
+      startScale: scale,
+      contentPoint: {
+        x: (midViewport.x - position.x) / scale,
+        y: (midViewport.y - position.y) / scale,
+      },
+    };
+  };
+
+  const updateTouchNavigation = () => {
+    const viewport = viewportRef.current;
+    const gesture = touchNavRef.current;
+    if (!viewport || !gesture) return;
+    const first = activeTouchPointsRef.current.get(gesture.pointerIds[0]);
+    const second = activeTouchPointsRef.current.get(gesture.pointerIds[1]);
+    if (!first || !second) return;
+    const rect = viewport.getBoundingClientRect();
+    const midClient = midpoint(first, second);
+    const midViewport = { x: midClient.x - rect.left, y: midClient.y - rect.top };
+    const distance = Math.max(pointDistance(first, second), 1);
+    const nextScale = clamp(gesture.startScale * (distance / gesture.startDistance), 0.35, 4);
+    setScale(nextScale);
+    setPosition({
+      x: midViewport.x - gesture.contentPoint.x * nextScale,
+      y: midViewport.y - gesture.contentPoint.y * nextScale,
     });
   };
 
@@ -590,43 +640,43 @@ export default function ElementPresentationOverlay({ drawingElementId, open, onC
   return (
     <div ref={overlayRef} className="fixed inset-0 z-[300] bg-[#eef2f7]">
       <div className="flex h-screen w-screen flex-col overflow-hidden">
-        <div className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4 shadow-sm">
-          <div>
+        <div className="flex flex-col gap-3 border-b border-slate-200 bg-white px-4 py-3 shadow-sm sm:px-6 sm:py-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
             <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">Curing Presentation</div>
-            <div className="mt-1 text-lg font-black tracking-tight text-slate-900">
+            <div className="mt-1 truncate text-base font-black tracking-tight text-slate-900 sm:text-lg">
               {payload ? `${payload.structure_name} / ${payload.plan_name} / ${payload.page_name} / ${payload.element_name}` : 'Loading...'}
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             {navigation?.enabled && (
               <>
                 <button
                   type="button"
                   onClick={() => navigation.previous_element_id && setCurrentElementId(navigation.previous_element_id)}
                   disabled={!navigation.previous_element_id}
-                  className="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+                  className="rounded-xl border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50 disabled:opacity-40 sm:p-2.5"
                   title="Previous active element"
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </button>
-                <span className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-black text-slate-700">
+                <span className="rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-black text-slate-700 sm:px-3 sm:py-2 sm:text-sm">
                   {`${navigation.current_position} of ${navigation.total} active`}
                 </span>
                 <button
                   type="button"
                   onClick={() => navigation.next_element_id && setCurrentElementId(navigation.next_element_id)}
                   disabled={!navigation.next_element_id}
-                  className="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+                  className="rounded-xl border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50 disabled:opacity-40 sm:p-2.5"
                   title="Next active element"
                 >
                   <ChevronRight className="h-4 w-4" />
                 </button>
               </>
             )}
-            {selectedDay && <span className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-black text-slate-700">{formatDateLabel(selectedDay.date)}</span>}
-            {selectedDay && <span className={`rounded-xl border px-3 py-2 text-sm font-black ${dayStatusClasses(selectedDay.day_status)}`}>{dayStatusLabel(selectedDay.day_status)}</span>}
-            {payload && <span className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-black text-amber-700">{`Missed: ${payload.missed_days_count} day${payload.missed_days_count === 1 ? '' : 's'}`}</span>}
-            {payload?.is_completed && <span className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-black text-emerald-700">Completed</span>}
+            {selectedDay && <span className="rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-black text-slate-700 sm:px-3 sm:py-2 sm:text-sm">{formatDateLabel(selectedDay.date)}</span>}
+            {selectedDay && <span className={`rounded-xl border px-2.5 py-1.5 text-xs font-black sm:px-3 sm:py-2 sm:text-sm ${dayStatusClasses(selectedDay.day_status)}`}>{dayStatusLabel(selectedDay.day_status)}</span>}
+            {payload && <span className="rounded-xl border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-black text-amber-700 sm:px-3 sm:py-2 sm:text-sm">{`Missed: ${payload.missed_days_count} day${payload.missed_days_count === 1 ? '' : 's'}`}</span>}
+            {payload?.is_completed && <span className="rounded-xl border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-black text-emerald-700 sm:px-3 sm:py-2 sm:text-sm">Completed</span>}
             <button
               type="button"
               onClick={() => {
@@ -636,12 +686,12 @@ export default function ElementPresentationOverlay({ drawingElementId, open, onC
                   void overlayRef.current.requestFullscreen();
                 }
               }}
-              className="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-600 hover:bg-slate-50"
+              className="rounded-xl border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50 sm:p-2.5"
               title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
             >
               {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
             </button>
-            <button type="button" onClick={() => { void handleClose(); }} className="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-600 hover:bg-slate-50" title="Close presentation">
+            <button type="button" onClick={() => { void handleClose(); }} className="rounded-xl border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50 sm:p-2.5" title="Close presentation">
               <X className="h-4 w-4" />
             </button>
           </div>
@@ -655,20 +705,21 @@ export default function ElementPresentationOverlay({ drawingElementId, open, onC
           <div className="flex flex-1 items-center justify-center text-sm font-bold text-slate-500">Failed to load presentation.</div>
         ) : (
           <>
-            <div className="grid min-h-0 flex-1 grid-cols-[34rem_1fr] gap-0">
-              <section className="flex min-h-0 flex-col border-r border-slate-200 bg-white">
-                <div className="border-b border-slate-200 px-8 py-6">
-                  <div className="text-sm font-medium text-slate-500">Structure Name</div>
-                  <div className="mt-1 text-4xl font-black tracking-tight text-slate-900">{payload.structure_name}</div>
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto lg:overflow-hidden">
+            <div className="grid grid-cols-1 lg:min-h-0 lg:flex-1 lg:grid-cols-[30rem_1fr] xl:grid-cols-[34rem_1fr]">
+              <section className="order-1 flex min-h-0 flex-col border-b border-slate-200 bg-white lg:border-b-0 lg:border-r">
+                <div className="border-b border-slate-200 px-4 py-4 sm:px-6 sm:py-5 lg:px-8 lg:py-6">
+                  <div className="text-xs font-medium uppercase tracking-[0.14em] text-slate-500 sm:text-sm">Structure Name</div>
+                  <div className="mt-1 text-2xl font-black tracking-tight text-slate-900 sm:text-3xl lg:text-4xl">{payload.structure_name}</div>
                 </div>
 
-                <div className="min-h-0 flex-1 overflow-y-auto px-8 py-6">
-                  <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-slate-50 shadow-sm">
-                    <div className="relative flex min-h-[420px] items-center justify-center bg-[#f4f7fb] px-6 py-6">
+                <div className="px-4 py-4 sm:px-6 sm:py-5 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:px-8 lg:py-6">
+                  <div className="overflow-hidden rounded-[22px] border border-slate-200 bg-slate-50 shadow-sm sm:rounded-[28px]">
+                    <div className="relative flex min-h-[280px] items-center justify-center bg-[#f4f7fb] px-3 py-3 sm:min-h-[360px] sm:px-5 sm:py-5 lg:min-h-[420px] lg:px-6 lg:py-6">
                       {currentMedia ? (
                         <>
-                          <div className="absolute left-4 right-4 top-4 z-20 flex items-start justify-between gap-4 rounded-2xl bg-white/92 px-4 py-3 shadow-sm backdrop-blur">
-                            <div className="flex items-center gap-3 text-xs font-black tracking-[0.12em] text-slate-600">
+                          <div className="absolute left-3 right-3 top-3 z-20 flex items-start justify-between gap-3 rounded-2xl bg-white/92 px-3 py-2.5 shadow-sm backdrop-blur sm:left-4 sm:right-4 sm:top-4 sm:px-4 sm:py-3">
+                            <div className="flex items-center gap-2 text-[10px] font-black tracking-[0.12em] text-slate-600 sm:gap-3 sm:text-xs">
                               <div>{formatDateTimeLabel(currentMedia.captured_at)}</div>
                               {currentMedia.capture_latitude && currentMedia.capture_longitude ? (
                                 <button
@@ -677,7 +728,7 @@ export default function ElementPresentationOverlay({ drawingElementId, open, onC
                                     const mapUrl = `https://www.google.com/maps?q=${currentMedia.capture_latitude},${currentMedia.capture_longitude}`;
                                     window.open(mapUrl, '_blank', 'noopener,noreferrer');
                                   }}
-                                  className="cursor-pointer rounded-xl bg-slate-900 p-2 text-white hover:bg-slate-800"
+                                  className="cursor-pointer rounded-xl bg-slate-900 p-1.5 text-white hover:bg-slate-800 sm:p-2"
                                   title="Open capture location in Google Maps"
                                 >
                                   <MapPin className="h-4 w-4" />
@@ -687,7 +738,7 @@ export default function ElementPresentationOverlay({ drawingElementId, open, onC
                               )}
                             </div>
                           </div>
-                          <div className="relative z-0 flex h-full w-full items-center justify-center pt-16">
+                          <div className="relative z-0 flex h-full w-full items-center justify-center pt-12 sm:pt-16">
                             {currentMedia.file_type === 'video' ? (
                               <video
                                 src={currentMediaUrl || undefined}
@@ -696,7 +747,7 @@ export default function ElementPresentationOverlay({ drawingElementId, open, onC
                                   fitMedia();
                                   setMediaViewerOpen(true);
                                 }}
-                                className="max-h-[300px] max-w-full cursor-zoom-in rounded-2xl bg-black shadow-xl"
+                                className="max-h-[240px] max-w-full cursor-zoom-in rounded-2xl bg-black shadow-xl sm:max-h-[300px]"
                                 style={{ transform: `scale(${mediaZoom}) rotate(${mediaRotation}deg)` }}
                               />
                             ) : (
@@ -707,7 +758,7 @@ export default function ElementPresentationOverlay({ drawingElementId, open, onC
                                   fitMedia();
                                   setMediaViewerOpen(true);
                                 }}
-                                className="max-h-[300px] max-w-full cursor-zoom-in rounded-2xl object-contain shadow-xl"
+                                className="max-h-[240px] max-w-full cursor-zoom-in rounded-2xl object-contain shadow-xl sm:max-h-[300px]"
                                 style={{ transform: `scale(${mediaZoom}) rotate(${mediaRotation}deg)` }}
                               />
                             )}
@@ -715,12 +766,12 @@ export default function ElementPresentationOverlay({ drawingElementId, open, onC
                         </>
                       ) : (
                         <div className="flex h-full w-full flex-col items-center justify-center gap-4 text-center text-slate-400">
-                          <div className="text-2xl font-black">{selectedDay?.entries.length ? 'No media uploaded for this entry/day' : 'No evidence uploaded for this day'}</div>
+                          <div className="text-lg font-black sm:text-2xl">{selectedDay?.entries.length ? 'No media uploaded for this entry/day' : 'No evidence uploaded for this day'}</div>
                         </div>
                       )}
                     </div>
 
-                    <div className="border-t border-slate-200 bg-white px-5 py-4">
+                    <div className="border-t border-slate-200 bg-white px-3 py-3 sm:px-5 sm:py-4">
                       <div className="flex items-center justify-between gap-3">
                         <button
                           type="button"
@@ -733,20 +784,20 @@ export default function ElementPresentationOverlay({ drawingElementId, open, onC
                             setActiveEntryIndex(nextItem.entryIndex);
                           }}
                           disabled={activeMediaFlatIndex == null || activeMediaFlatIndex <= 0}
-                          className="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+                          className="rounded-xl border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50 disabled:opacity-40 sm:p-2.5"
                         >
                           <ChevronLeft className="h-4 w-4" />
                         </button>
                         <div className="text-center">
-                          <div className="text-3xl font-black tracking-tight text-slate-900">{formatDateLabel(selectedDay?.date)}</div>
-                          <div className="mt-2 text-sm font-bold text-slate-500">
+                          <div className="text-xl font-black tracking-tight text-slate-900 sm:text-2xl lg:text-3xl">{formatDateLabel(selectedDay?.date)}</div>
+                          <div className="mt-2 text-xs font-bold text-slate-500 sm:text-sm">
                             {currentEntry ? (currentEntry.remark?.trim() || 'No comment') : 'No comment'}
                           </div>
-                          <div className="mt-2 text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                          <div className="mt-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 sm:text-xs sm:tracking-[0.18em]">
                             {currentEntry ? `Entry ${activeEntryIndex + 1} of ${selectedDay?.entries.length || 1}` : 'No entry'}
                             {currentMediaItem ? ` • Media ${activeMediaFlatIndex! + 1} of ${currentDayPlayback.length}` : ''}
                           </div>
-                          <div className="mt-1 text-xs font-semibold text-slate-400">
+                          <div className="mt-1 text-[10px] font-semibold text-slate-400 sm:text-xs">
                             {payload.start_date && payload.end_date ? `Curing Period: ${formatDateLabel(payload.start_date)} - ${formatDateLabel(payload.end_date)}, Curing Missed: ${payload.missed_days_count} Day${payload.missed_days_count === 1 ? '' : 's'}` : ''}
                           </div>
                         </div>
@@ -761,7 +812,7 @@ export default function ElementPresentationOverlay({ drawingElementId, open, onC
                             setActiveEntryIndex(nextItem.entryIndex);
                           }}
                           disabled={activeMediaFlatIndex == null || activeMediaFlatIndex >= currentDayPlayback.length - 1}
-                          className="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+                          className="rounded-xl border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50 disabled:opacity-40 sm:p-2.5"
                         >
                           <ChevronRight className="h-4 w-4" />
                         </button>
@@ -778,7 +829,7 @@ export default function ElementPresentationOverlay({ drawingElementId, open, onC
                                 const firstMediaIndex = currentDayPlayback.findIndex((item) => item.entryIndex === index);
                                 setActiveMediaFlatIndex(firstMediaIndex >= 0 ? firstMediaIndex : null);
                               }}
-                              className={`rounded-xl border px-3 py-2 text-xs font-black uppercase tracking-[0.12em] transition-colors ${index === activeEntryIndex ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'}`}
+                              className={`rounded-xl border px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] transition-colors sm:px-3 sm:py-2 sm:text-xs ${index === activeEntryIndex ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'}`}
                             >
                               {`Entry ${index + 1}${entry.did_cure_today ? '' : ' • Not Cured'}`}
                             </button>
@@ -803,7 +854,7 @@ export default function ElementPresentationOverlay({ drawingElementId, open, onC
                                         setActiveEntryIndex(entryIndex);
                                         setActiveMediaFlatIndex(flatIndex);
                                       }}
-                                      className={`relative h-16 w-24 overflow-hidden rounded-xl border ${selected ? 'border-blue-500 shadow-[0_0_0_1px_rgba(59,130,246,0.22)]' : 'border-slate-200'}`}
+                                      className={`relative h-14 w-20 overflow-hidden rounded-xl border sm:h-16 sm:w-24 ${selected ? 'border-blue-500 shadow-[0_0_0_1px_rgba(59,130,246,0.22)]' : 'border-slate-200'}`}
                                     >
                                       {media.file_type === 'video' ? (
                                         <video src={mediaUrlMap[media.media_id]} className="h-full w-full object-cover" muted />
@@ -823,9 +874,9 @@ export default function ElementPresentationOverlay({ drawingElementId, open, onC
                 </div>
               </section>
 
-              <section className="relative flex min-h-0 flex-col bg-[#e5eaf1]">
-                <div className="pointer-events-none absolute left-1/2 top-5 z-20 -translate-x-1/2">
-                  <div className="pointer-events-auto flex items-center gap-2 rounded-2xl border border-slate-800 bg-slate-950/92 px-3 py-2 shadow-xl">
+              <section className="relative order-2 flex min-h-[70dvh] flex-col bg-[#e5eaf1] lg:min-h-0">
+                <div className="pointer-events-none absolute left-1/2 top-3 z-20 -translate-x-1/2 sm:top-5">
+                  <div className="pointer-events-auto flex items-center gap-1.5 rounded-2xl border border-slate-800 bg-slate-950/92 px-2 py-1.5 shadow-xl sm:gap-2 sm:px-3 sm:py-2">
                     <button type="button" onClick={() => setScale((current) => current * 1.15)} className="rounded-xl bg-slate-900 p-2 text-slate-200 hover:bg-slate-800 hover:text-white"><ZoomIn className="h-4 w-4" /></button>
                     <button type="button" onClick={() => setScale((current) => current * 0.85)} className="rounded-xl bg-slate-900 p-2 text-slate-200 hover:bg-slate-800 hover:text-white"><ZoomOut className="h-4 w-4" /></button>
                     <button type="button" onClick={fitToElement} className="rounded-xl bg-slate-900 p-2 text-slate-200 hover:bg-slate-800 hover:text-white"><ScanSearch className="h-4 w-4" /></button>
@@ -834,12 +885,13 @@ export default function ElementPresentationOverlay({ drawingElementId, open, onC
                     </button>
                   </div>
                 </div>
-                <div className="pointer-events-none absolute left-1/2 top-[76px] z-20 -translate-x-1/2 text-[13px] font-black tracking-[0.08em] text-black/60">
+                <div className="pointer-events-none absolute left-1/2 top-[62px] z-20 -translate-x-1/2 text-[10px] font-black tracking-[0.08em] text-black/60 sm:top-[76px] sm:text-[13px]">
                   {`${payload.plan_name} / ${payload.page_name}`}
                 </div>
                 <div
                   ref={viewportRef}
                   className={`relative flex-1 overflow-hidden ${isPanning ? 'cursor-grabbing' : 'cursor-none'}`}
+                  style={{ touchAction: 'none' }}
                   onWheel={(event) => {
                     event.preventDefault();
                     const rect = viewportRef.current?.getBoundingClientRect();
@@ -867,6 +919,42 @@ export default function ElementPresentationOverlay({ drawingElementId, open, onC
                     setIsPanning(false);
                     setMouseViewport((current) => ({ ...current, visible: false }));
                   }}
+                  onTouchStart={(event) => {
+                    for (const touch of Array.from(event.changedTouches)) {
+                      activeTouchPointsRef.current.set(touch.identifier, { x: touch.clientX, y: touch.clientY });
+                    }
+                    if (activeTouchPointsRef.current.size >= 2) {
+                      startTouchNavigation();
+                    }
+                  }}
+                  onTouchMove={(event) => {
+                    for (const touch of Array.from(event.changedTouches)) {
+                      activeTouchPointsRef.current.set(touch.identifier, { x: touch.clientX, y: touch.clientY });
+                    }
+                    if (touchNavRef.current) {
+                      updateTouchNavigation();
+                    } else if (activeTouchPointsRef.current.size >= 2) {
+                      startTouchNavigation();
+                      updateTouchNavigation();
+                    }
+                  }}
+                  onTouchEnd={(event) => {
+                    for (const touch of Array.from(event.changedTouches)) {
+                      activeTouchPointsRef.current.delete(touch.identifier);
+                    }
+                    if (activeTouchPointsRef.current.size >= 2) {
+                      startTouchNavigation();
+                      updateTouchNavigation();
+                    } else {
+                      touchNavRef.current = null;
+                    }
+                  }}
+                  onTouchCancel={(event) => {
+                    for (const touch of Array.from(event.changedTouches)) {
+                      activeTouchPointsRef.current.delete(touch.identifier);
+                    }
+                    touchNavRef.current = null;
+                  }}
                   onContextMenu={(event) => event.preventDefault()}
                 >
                   <div className="absolute inset-0 origin-top-left" style={{ transform: `translate(${position.x}px, ${position.y}px) scale(${scale})` }}>
@@ -886,26 +974,27 @@ export default function ElementPresentationOverlay({ drawingElementId, open, onC
               </section>
             </div>
 
-            <div className="border-t border-slate-200 bg-white px-6 py-4">
-              <div ref={timelineRailRef} className="flex gap-3 overflow-x-auto">
+            <div className="border-t border-slate-200 bg-white px-3 py-2 sm:px-6 sm:py-3">
+              <div ref={timelineRailRef} className="flex gap-2 overflow-x-auto sm:gap-3">
                 {timelineDays.map((day, index) => (
                   <button
                     key={day.date}
                     type="button"
                     onClick={() => setSelectedDayIndex(index)}
-                    className={`min-w-[140px] rounded-2xl border px-4 py-3 text-left transition-colors ${timelineClasses(day, index === selectedDayIndex)}`}
+                    className={`min-w-[96px] rounded-2xl border px-2.5 py-2 text-left transition-colors sm:min-w-[140px] sm:px-4 sm:py-3 ${timelineClasses(day, index === selectedDayIndex)}`}
                   >
-                    <div className="text-xs font-black uppercase tracking-[0.18em]">
+                    <div className="text-[10px] font-black uppercase tracking-[0.16em] sm:text-xs sm:tracking-[0.18em]">
                       {formatDateLabel(day.date)}
                       {day.date === currentDateIso && <span className={`ml-1 ${index === selectedDayIndex ? 'text-white/70' : 'text-slate-400'}`}>(Today)</span>}
                     </div>
-                    <div className="mt-2 text-sm font-black">{timelineLabel(day)}</div>
-                    <div className={`mt-1 text-[11px] font-bold ${index === selectedDayIndex ? 'text-white/70' : 'text-slate-400'}`}>
+                    <div className="mt-2 text-xs font-black sm:text-sm">{timelineLabel(day)}</div>
+                    <div className={`mt-1 text-[10px] font-bold sm:text-[11px] ${index === selectedDayIndex ? 'text-white/70' : 'text-slate-400'}`}>
                       {`${day.entry_count} entry • ${day.media_count} media`}
                     </div>
                   </button>
                 ))}
               </div>
+            </div>
             </div>
           </>
         )}
@@ -914,17 +1003,17 @@ export default function ElementPresentationOverlay({ drawingElementId, open, onC
       {mediaViewerOpen && currentMedia && (
         <div className="fixed inset-0 z-[340] bg-black/92" ref={mediaOverlayRef}>
           <div className="flex h-full w-full flex-col">
-            <div className="flex items-center justify-end gap-3 px-6 py-5">
-              <button type="button" onClick={() => setMediaZoom((current) => clamp(current - 0.2, 0.4, 4))} className="rounded-xl bg-white/10 p-2.5 text-white hover:bg-white/15"><ZoomOut className="h-4 w-4" /></button>
-              <button type="button" onClick={() => setMediaZoom((current) => clamp(current + 0.2, 0.4, 4))} className="rounded-xl bg-white/10 p-2.5 text-white hover:bg-white/15"><ZoomIn className="h-4 w-4" /></button>
-              <button type="button" onClick={() => setMediaRotation((current) => current - 90)} className="rounded-xl bg-white/10 p-2.5 text-white hover:bg-white/15"><RotateCcw className="h-4 w-4" /></button>
-              <button type="button" onClick={() => setMediaRotation((current) => current + 90)} className="rounded-xl bg-white/10 p-2.5 text-white hover:bg-white/15"><RotateCw className="h-4 w-4" /></button>
-              <button type="button" onClick={() => { void toggleMediaFullscreen(); }} className="rounded-xl bg-white/10 p-2.5 text-white hover:bg-white/15" title={isMediaFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}>
+            <div className="flex flex-wrap items-center justify-end gap-2 px-3 py-3 sm:gap-3 sm:px-6 sm:py-5">
+              <button type="button" onClick={() => setMediaZoom((current) => clamp(current - 0.2, 0.4, 4))} className="rounded-xl bg-white/10 p-2 text-white hover:bg-white/15 sm:p-2.5"><ZoomOut className="h-4 w-4" /></button>
+              <button type="button" onClick={() => setMediaZoom((current) => clamp(current + 0.2, 0.4, 4))} className="rounded-xl bg-white/10 p-2 text-white hover:bg-white/15 sm:p-2.5"><ZoomIn className="h-4 w-4" /></button>
+              <button type="button" onClick={() => setMediaRotation((current) => current - 90)} className="rounded-xl bg-white/10 p-2 text-white hover:bg-white/15 sm:p-2.5"><RotateCcw className="h-4 w-4" /></button>
+              <button type="button" onClick={() => setMediaRotation((current) => current + 90)} className="rounded-xl bg-white/10 p-2 text-white hover:bg-white/15 sm:p-2.5"><RotateCw className="h-4 w-4" /></button>
+              <button type="button" onClick={() => { void toggleMediaFullscreen(); }} className="rounded-xl bg-white/10 p-2 text-white hover:bg-white/15 sm:p-2.5" title={isMediaFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}>
                 {isMediaFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
               </button>
-              <button type="button" onClick={() => setMediaViewerOpen(false)} className="rounded-xl bg-white/10 p-2.5 text-white hover:bg-white/15"><X className="h-4 w-4" /></button>
+              <button type="button" onClick={() => setMediaViewerOpen(false)} className="rounded-xl bg-white/10 p-2 text-white hover:bg-white/15 sm:p-2.5"><X className="h-4 w-4" /></button>
             </div>
-            <div className="relative flex flex-1 items-center justify-center px-8 pb-8">
+            <div className="relative flex flex-1 items-center justify-center px-3 pb-3 sm:px-8 sm:pb-8">
               {currentMedia.file_type === 'video' ? (
                 <video
                   src={currentMediaUrl || undefined}
