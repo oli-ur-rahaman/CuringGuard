@@ -6,6 +6,18 @@ import {
 } from 'lucide-react';
 import { hierarchyService, userService, authService, curingService, notificationService } from '../services/api';
 
+type NotificationSlot = {
+  id: number;
+  notification_time: string;
+  is_enabled: boolean;
+};
+
+type StructureNotificationSettings = {
+  auto_sms_enabled: boolean;
+  auto_web_enabled: boolean;
+  slots: NotificationSlot[];
+};
+
 const hierarchyViewKey = (userId: number) => `curingguard.hierarchy.view.${userId || 'anon'}`;
 
 type HierarchyViewState = {
@@ -33,6 +45,27 @@ const saveHierarchyView = (userId: number, projectId: number, packageId: number,
   localStorage.setItem(hierarchyViewKey(userId), JSON.stringify({ projectId, packageId, mode }));
 };
 
+const slotTimeToMinutes = (value: string) => {
+  const [hour, minute] = value.split(':').map((part) => Number(part));
+  return (Number.isFinite(hour) ? hour : 0) * 60 + (Number.isFinite(minute) ? minute : 0);
+};
+
+const minutesToSlotTime = (inputMinutes: number) => {
+  const clamped = Math.max(0, Math.min(23 * 60 + 59, Math.round(inputMinutes)));
+  const hour = Math.floor(clamped / 60);
+  const minute = clamped % 60;
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+};
+
+const formatSlotTimeLabel = (value: string) => {
+  const [rawHour, rawMinute] = value.split(':').map((part) => Number(part));
+  const hour = Number.isFinite(rawHour) ? rawHour : 0;
+  const minute = Number.isFinite(rawMinute) ? rawMinute : 0;
+  const suffix = hour >= 12 ? 'PM' : 'AM';
+  const hour12 = hour % 12 === 0 ? 12 : hour % 12;
+  return `${hour12}:${String(minute).padStart(2, '0')} ${suffix}`;
+};
+
 export default function ProjectSetup() {
   const user = authService.getCurrentUser();
   const user_id = user ? user.user_id : 0;
@@ -58,11 +91,21 @@ export default function ProjectSetup() {
   const [contractors, setContractors] = useState<any[]>([]);
   const [allDrawingsByStructure, setAllDrawingsByStructure] = useState<Record<number, any[]>>({});
   const [drawingsByStructure, setDrawingsByStructure] = useState<Record<number, any[]>>({});
-  const [notificationSettingsByStructure, setNotificationSettingsByStructure] = useState<Record<number, { notification_time: string; auto_sms_enabled: boolean; auto_web_enabled: boolean }>>({});
+  const [notificationSettingsByStructure, setNotificationSettingsByStructure] = useState<Record<number, StructureNotificationSettings>>({});
+  const [selectedNotificationSlotByStructure, setSelectedNotificationSlotByStructure] = useState<Record<number, number | null>>({});
+  const [whatsAppUiEnabledByStructure, setWhatsAppUiEnabledByStructure] = useState<Record<number, boolean>>({});
   const [selectedStructureForUpload, setSelectedStructureForUpload] = useState<number | null>(null);
   const [uploadingStructureId, setUploadingStructureId] = useState<number | null>(null);
   const [deletingDrawingId, setDeletingDrawingId] = useState<number | null>(null);
   const [savingNotificationStructureId, setSavingNotificationStructureId] = useState<number | null>(null);
+  const timelineRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  const slotTimeInputRefs = useRef<Record<number, HTMLInputElement | null>>({});
+  const notificationDragRef = useRef<null | {
+    structureId: number;
+    slotId: number;
+    originalTime: string;
+    lastTime: string;
+  }>(null);
   const [showCreateContractorModal, setShowCreateContractorModal] = useState(false);
   const [targetStructureForContractor, setTargetStructureForContractor] = useState<number | null>(null);
   const [creatingAndAssigningContractor, setCreatingAndAssigningContractor] = useState(false);
@@ -114,9 +157,11 @@ export default function ProjectSetup() {
             structureSettings.map((setting: any) => [
               setting.structure_id,
               {
-                notification_time: setting.notification_time || '08:00',
                 auto_sms_enabled: !!setting.auto_sms_enabled,
                 auto_web_enabled: setting.auto_web_enabled !== false,
+                slots: Array.isArray(setting.slots) && setting.slots.length > 0
+                  ? [...setting.slots].sort((a: any, b: any) => slotTimeToMinutes(a.notification_time) - slotTimeToMinutes(b.notification_time))
+                  : [{ id: -1, notification_time: '10:30', is_enabled: true }],
               },
             ])
           )
@@ -457,14 +502,23 @@ export default function ProjectSetup() {
     }
   };
 
+  const getTimelineMinutesFromClientX = (structureId: number, clientX: number) => {
+    const rail = timelineRefs.current[structureId];
+    if (!rail) return null;
+    const rect = rail.getBoundingClientRect();
+    if (rect.width <= 0) return null;
+    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    return Math.round((ratio * 24 * 60) / 30) * 30;
+  };
+
   const handleNotificationSettingChange = async (
     structureId: number,
-    patch: { notification_time?: string; auto_sms_enabled?: boolean }
+    patch: { auto_sms_enabled?: boolean; auto_web_enabled?: boolean }
   ) => {
     const current = notificationSettingsByStructure[structureId] || {
-      notification_time: '08:00',
       auto_sms_enabled: false,
       auto_web_enabled: true,
+      slots: [],
     };
     const optimistic = { ...current, ...patch };
     setNotificationSettingsByStructure((prev) => ({ ...prev, [structureId]: optimistic }));
@@ -474,9 +528,9 @@ export default function ProjectSetup() {
       setNotificationSettingsByStructure((prev) => ({
         ...prev,
         [structureId]: {
-          notification_time: updated.notification_time || '08:00',
           auto_sms_enabled: !!updated.auto_sms_enabled,
           auto_web_enabled: updated.auto_web_enabled !== false,
+          slots: Array.isArray(updated.slots) ? [...updated.slots].sort((a: any, b: any) => slotTimeToMinutes(a.notification_time) - slotTimeToMinutes(b.notification_time)) : current.slots,
         },
       }));
     } catch (error: any) {
@@ -487,42 +541,324 @@ export default function ProjectSetup() {
     }
   };
 
+  const handleCreateNotificationSlot = async (structureId: number, notificationTime: string) => {
+    try {
+      setSavingNotificationStructureId(structureId);
+      const created = await notificationService.createStructureSlot(structureId, { notification_time: notificationTime });
+      setNotificationSettingsByStructure((prev) => {
+        const current = prev[structureId] || { auto_sms_enabled: false, auto_web_enabled: true, slots: [] };
+        const slots = [...current.slots, created].sort((a, b) => slotTimeToMinutes(a.notification_time) - slotTimeToMinutes(b.notification_time));
+        return { ...prev, [structureId]: { ...current, slots } };
+      });
+      setSelectedNotificationSlotByStructure((prev) => ({ ...prev, [structureId]: created.id }));
+    } catch (error: any) {
+      alert(error.response?.data?.detail || 'Failed to add notification time.');
+    } finally {
+      setSavingNotificationStructureId(null);
+    }
+  };
+
+  const handleTimelineClick = async (structureId: number, event: React.MouseEvent<HTMLDivElement>) => {
+    if ((event.target as HTMLElement).closest('[data-slot-marker="true"]')) return;
+    const minutes = getTimelineMinutesFromClientX(structureId, event.clientX);
+    if (minutes == null) return;
+    const notificationTime = minutesToSlotTime(minutes);
+    const current = notificationSettingsByStructure[structureId];
+    if (current?.slots.some((slot) => slot.notification_time === notificationTime)) {
+      const existing = current.slots.find((slot) => slot.notification_time === notificationTime);
+      setSelectedNotificationSlotByStructure((prev) => ({ ...prev, [structureId]: existing?.id || null }));
+      return;
+    }
+    await handleCreateNotificationSlot(structureId, notificationTime);
+  };
+
+  const handleNotificationSlotPointerDown = (structureId: number, slot: NotificationSlot, event: React.PointerEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setSelectedNotificationSlotByStructure((prev) => ({ ...prev, [structureId]: slot.id }));
+    notificationDragRef.current = {
+      structureId,
+      slotId: slot.id,
+      originalTime: slot.notification_time,
+      lastTime: slot.notification_time,
+    };
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // noop
+    }
+  };
+
+  useEffect(() => {
+    const handlePointerMove = (event: PointerEvent) => {
+      const drag = notificationDragRef.current;
+      if (!drag) return;
+      const minutes = getTimelineMinutesFromClientX(drag.structureId, event.clientX);
+      if (minutes == null) return;
+      const nextTime = minutesToSlotTime(minutes);
+      const current = notificationSettingsByStructure[drag.structureId];
+      if (!current) return;
+      const duplicate = current.slots.some((slot) => slot.id !== drag.slotId && slot.notification_time === nextTime);
+      if (duplicate || drag.lastTime === nextTime) return;
+      drag.lastTime = nextTime;
+      setNotificationSettingsByStructure((prev) => ({
+        ...prev,
+        [drag.structureId]: {
+          ...current,
+          slots: current.slots.map((slot) => slot.id === drag.slotId ? { ...slot, notification_time: nextTime } : slot)
+            .sort((a, b) => slotTimeToMinutes(a.notification_time) - slotTimeToMinutes(b.notification_time)),
+        },
+      }));
+    };
+
+    const handlePointerUp = async () => {
+      const drag = notificationDragRef.current;
+      if (!drag) return;
+      notificationDragRef.current = null;
+      if (drag.lastTime === drag.originalTime) return;
+      try {
+        setSavingNotificationStructureId(drag.structureId);
+        await notificationService.updateStructureSlot(drag.structureId, drag.slotId, { notification_time: drag.lastTime });
+      } catch (error: any) {
+        setNotificationSettingsByStructure((prev) => {
+          const current = prev[drag.structureId];
+          if (!current) return prev;
+          return {
+            ...prev,
+            [drag.structureId]: {
+              ...current,
+              slots: current.slots.map((slot) => slot.id === drag.slotId ? { ...slot, notification_time: drag.originalTime } : slot)
+                .sort((a, b) => slotTimeToMinutes(a.notification_time) - slotTimeToMinutes(b.notification_time)),
+            },
+          };
+        });
+        alert(error.response?.data?.detail || 'Failed to update notification time.');
+      } finally {
+        setSavingNotificationStructureId(null);
+      }
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerUp);
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerUp);
+    };
+  }, [notificationSettingsByStructure]);
+
+  const handleToggleNotificationSlot = async (structureId: number, slot: NotificationSlot) => {
+    const current = notificationSettingsByStructure[structureId];
+    if (!current) return;
+    setNotificationSettingsByStructure((prev) => ({
+      ...prev,
+      [structureId]: {
+        ...current,
+        slots: current.slots.map((item) => item.id === slot.id ? { ...item, is_enabled: !item.is_enabled } : item),
+      },
+    }));
+    try {
+      setSavingNotificationStructureId(structureId);
+      await notificationService.updateStructureSlot(structureId, slot.id, { is_enabled: !slot.is_enabled });
+    } catch (error: any) {
+      setNotificationSettingsByStructure((prev) => ({ ...prev, [structureId]: current }));
+      alert(error.response?.data?.detail || 'Failed to update notification time status.');
+    } finally {
+      setSavingNotificationStructureId(null);
+    }
+  };
+
+  const handleDeleteNotificationSlot = async (structureId: number, slotId: number) => {
+    const current = notificationSettingsByStructure[structureId];
+    if (!current) return;
+    if (!window.confirm('Delete this notification time?')) return;
+    setNotificationSettingsByStructure((prev) => ({
+      ...prev,
+      [structureId]: {
+        ...current,
+        slots: current.slots.filter((slot) => slot.id !== slotId),
+      },
+    }));
+    try {
+      setSavingNotificationStructureId(structureId);
+      await notificationService.deleteStructureSlot(structureId, slotId);
+      setSelectedNotificationSlotByStructure((prev) => ({ ...prev, [structureId]: prev[structureId] === slotId ? null : prev[structureId] }));
+    } catch (error: any) {
+      setNotificationSettingsByStructure((prev) => ({ ...prev, [structureId]: current }));
+      alert(error.response?.data?.detail || 'Failed to delete notification time.');
+    } finally {
+      setSavingNotificationStructureId(null);
+    }
+  };
+
+  const handleSelectedSlotTimeChange = async (structureId: number, slot: NotificationSlot, nextTime: string) => {
+    const current = notificationSettingsByStructure[structureId];
+    if (!current || !nextTime || nextTime === slot.notification_time) return;
+    if (current.slots.some((item) => item.id !== slot.id && item.notification_time === nextTime)) {
+      alert('This structure already has that notification time.');
+      return;
+    }
+    const optimisticSlots = current.slots
+      .map((item) => item.id === slot.id ? { ...item, notification_time: nextTime } : item)
+      .sort((a, b) => slotTimeToMinutes(a.notification_time) - slotTimeToMinutes(b.notification_time));
+    setNotificationSettingsByStructure((prev) => ({
+      ...prev,
+      [structureId]: {
+        ...current,
+        slots: optimisticSlots,
+      },
+    }));
+    try {
+      setSavingNotificationStructureId(structureId);
+      await notificationService.updateStructureSlot(structureId, slot.id, { notification_time: nextTime });
+    } catch (error: any) {
+      setNotificationSettingsByStructure((prev) => ({ ...prev, [structureId]: current }));
+      alert(error.response?.data?.detail || 'Failed to update notification time.');
+    } finally {
+      setSavingNotificationStructureId(null);
+    }
+  };
+
   const renderNotificationControls = (structureId: number) => {
     const settings = notificationSettingsByStructure[structureId] || {
-      notification_time: '08:00',
       auto_sms_enabled: false,
       auto_web_enabled: true,
+      slots: [],
     };
     const isSaving = savingNotificationStructureId === structureId;
+    const selectedSlotId = selectedNotificationSlotByStructure[structureId] ?? settings.slots[0]?.id ?? null;
+    const selectedSlot = settings.slots.find((slot) => slot.id === selectedSlotId) || null;
+    const whatsAppUiEnabled = !!whatsAppUiEnabledByStructure[structureId];
 
     return (
-      <div className="mb-4 rounded-[18px] border border-white bg-white px-4 py-4 shadow-sm">
+      <div className="mb-4 px-1 py-1">
         <div className="mb-3 flex items-center gap-2">
-          <BellRing className="h-4 w-4 text-blue-600" />
+          <BellRing className="h-4 w-4 text-sky-600" />
           <span className="text-[11px] font-extrabold uppercase tracking-[0.18em] text-slate-600">Notifications</span>
           {isSaving && <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin text-slate-400" />}
         </div>
-        <div className="grid grid-cols-1 gap-3 xl:grid-cols-[150px_1fr]">
-          <div>
-            <label className="mb-1.5 block text-[10px] font-extrabold uppercase tracking-[0.18em] text-slate-400">SMS Time</label>
-            <input
-              type="time"
-              value={settings.notification_time}
-              onChange={(e) => { void handleNotificationSettingChange(structureId, { notification_time: e.target.value }); }}
-              className="h-[44px] w-full rounded-[14px] border border-slate-200 bg-white px-3 text-sm font-extrabold text-slate-700 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
-            />
+
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
+            {[
+              { label: 'SMS', active: settings.auto_sms_enabled, onClick: () => { void handleNotificationSettingChange(structureId, { auto_sms_enabled: !settings.auto_sms_enabled }); } },
+              { label: 'WEB', active: settings.auto_web_enabled, onClick: () => { void handleNotificationSettingChange(structureId, { auto_web_enabled: !settings.auto_web_enabled }); } },
+              { label: "Whats'app", active: whatsAppUiEnabled, onClick: () => setWhatsAppUiEnabledByStructure((prev) => ({ ...prev, [structureId]: !prev[structureId] })) },
+            ].map((toggle) => (
+              <div key={toggle.label} className="flex items-center gap-2.5">
+                <span className="text-[13px] font-black uppercase tracking-[0.12em] text-slate-600">{toggle.label}</span>
+                <button
+                  type="button"
+                  onClick={toggle.onClick}
+                  role="switch"
+                  aria-checked={toggle.active}
+                  className={`relative inline-flex h-[30px] w-[52px] shrink-0 items-center rounded-full p-[3px] shadow-[inset_0_1px_2px_rgba(15,23,42,0.08)] transition-colors duration-200 ${toggle.active ? 'bg-sky-500' : 'bg-slate-200'}`}
+                >
+                  <span
+                    className={`block h-[24px] w-[24px] rounded-full bg-white shadow-[0_2px_6px_rgba(15,23,42,0.18)] transition-transform duration-200 ${toggle.active ? 'translate-x-[22px]' : 'translate-x-0'}`}
+                  />
+                </button>
+              </div>
+            ))}
           </div>
-          <div className="flex items-end">
-            <button
-              type="button"
-              onClick={() => { void handleNotificationSettingChange(structureId, { auto_sms_enabled: !settings.auto_sms_enabled }); }}
-              className={`inline-flex h-[44px] min-w-[138px] items-center justify-center rounded-[14px] px-4 text-[12px] font-extrabold uppercase tracking-wider transition-colors ${
-                settings.auto_sms_enabled ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-700'
-              }`}
+
+          <div className="pt-1">
+            <div className="relative mb-2 h-4 text-[9px] font-black uppercase tracking-[0.1em] text-slate-400">
+              {Array.from({ length: 13 }, (_, index) => {
+                const leftPercent = (index / 12) * 100;
+                const label = index === 12 ? '0' : String(index * 2);
+                const edgeClass = index === 0 ? 'translate-x-0 text-left' : index === 12 ? '-translate-x-full text-right' : '-translate-x-1/2 text-center';
+                return (
+                  <span
+                    key={index}
+                    className={`absolute top-0 ${edgeClass}`}
+                    style={{ left: `${leftPercent}%` }}
+                  >
+                    {label}
+                  </span>
+                );
+              })}
+            </div>
+            <div
+              ref={(node) => { timelineRefs.current[structureId] = node; }}
+              className="relative h-[58px] rounded-[20px] border border-slate-200 bg-white px-3 shadow-[0_10px_24px_rgba(15,23,42,0.04)]"
+              onClick={(event) => { void handleTimelineClick(structureId, event); }}
             >
-              Auto SMS {settings.auto_sms_enabled ? 'On' : 'Off'}
-            </button>
+              <div className="absolute inset-x-4 top-1/2 h-[3px] -translate-y-1/2 rounded-full bg-slate-200" />
+              {Array.from({ length: 13 }, (_, index) => (
+                <div
+                  key={index}
+                  className="pointer-events-none absolute top-[8px] bottom-[8px] w-px bg-slate-200/90"
+                  style={{ left: `calc(${(index / 12) * 100}% - 1px)` }}
+                />
+              ))}
+              {settings.slots.map((slot) => {
+                const leftPercent = (slotTimeToMinutes(slot.notification_time) / (24 * 60)) * 100;
+                const isSelected = slot.id === selectedSlotId;
+                return (
+                  <button
+                    key={slot.id}
+                    type="button"
+                    data-slot-marker="true"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setSelectedNotificationSlotByStructure((prev) => ({ ...prev, [structureId]: slot.id }));
+                    }}
+                    onPointerDown={(event) => handleNotificationSlotPointerDown(structureId, slot, event)}
+                    className={`absolute top-1/2 z-10 h-6 w-6 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 ${slot.is_enabled ? 'border-blue-500 bg-blue-500' : 'border-slate-300 bg-white'} ${isSelected ? 'shadow-[0_0_0_4px_rgba(59,130,246,0.14),0_6px_16px_rgba(59,130,246,0.28)]' : 'shadow-[0_4px_10px_rgba(15,23,42,0.12)]'}`}
+                    style={{ left: `${leftPercent}%` }}
+                    title={formatSlotTimeLabel(slot.notification_time)}
+                  >
+                    <span className="absolute inset-[3px] rounded-full border border-white/80 bg-blue-600/85" />
+                  </button>
+                );
+              })}
+            </div>
           </div>
+
+          {selectedSlot ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                ref={(node) => { slotTimeInputRefs.current[structureId] = node; }}
+                type="time"
+                step={60}
+                className="sr-only"
+                value={selectedSlot.notification_time}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  if (!value) return;
+                  void handleSelectedSlotTimeChange(structureId, selectedSlot, value);
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const input = slotTimeInputRefs.current[structureId];
+                  if (!input) return;
+                  if (typeof input.showPicker === 'function') input.showPicker();
+                  else input.click();
+                }}
+                className="rounded-2xl bg-slate-100 px-4 py-2.5 text-sm font-black text-slate-700 shadow-sm transition-colors hover:bg-slate-200"
+              >
+                {formatSlotTimeLabel(selectedSlot.notification_time)}
+              </button>
+              <button
+                type="button"
+                onClick={() => { void handleToggleNotificationSlot(structureId, selectedSlot); }}
+                className={`rounded-2xl px-4 py-2.5 text-sm font-black uppercase tracking-[0.14em] shadow-sm ${selectedSlot.is_enabled ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}
+              >
+                {selectedSlot.is_enabled ? 'Disable' : 'Enable'}
+              </button>
+              <button
+                type="button"
+                onClick={() => { void handleDeleteNotificationSlot(structureId, selectedSlot.id); }}
+                className="rounded-2xl bg-red-50 px-4 py-2.5 text-sm font-black uppercase tracking-[0.14em] text-red-600 shadow-sm"
+              >
+                Delete
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
     );
@@ -867,7 +1203,7 @@ export default function ProjectSetup() {
       ) : (
       <div className="flex-1 overflow-y-auto pb-10">
          {displayStructures.length > 0 ? (
-           <div className="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-5">
+           <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
              {displayStructures.map(s => {
                const assignedCon = contractors.find(c => c.id === s.contractor_id);
                return (

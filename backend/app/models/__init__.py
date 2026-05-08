@@ -5,6 +5,7 @@ from backend.app.models.system import SystemSetting
 from backend.app.models.notifications import (
     NotificationDispatchLog,
     StructureNotificationSetting,
+    StructureNotificationScheduleSlot,
     WebNotification,
 )
 from backend.app.models.curing import (

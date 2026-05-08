@@ -7,6 +7,7 @@ from backend.app.models.curing import DrawingElement
 from backend.app.models.hierarchy import Drawing, Package, Project, Structure
 from backend.app.models.notifications import (
     NotificationDispatchLog,
+    StructureNotificationScheduleSlot,
     StructureNotificationSetting,
     WebNotification,
 )
@@ -84,6 +85,36 @@ def is_sms_result_failed(sms_result) -> bool:
     status_value = str(sms_result.get("status", "")).strip().lower()
     message_value = str(sms_result.get("message", "")).strip().lower()
     return status_value in {"failed", "error"} or "wrong" in message_value or "error" in message_value
+
+
+def ensure_structure_notification_defaults(db: Session, structure_id: int):
+    setting = db.query(StructureNotificationSetting).filter(StructureNotificationSetting.structure_id == structure_id).first()
+    if not setting:
+        setting = StructureNotificationSetting(
+            structure_id=structure_id,
+            notification_time="10:30",
+            auto_sms_enabled=False,
+            auto_web_enabled=True,
+        )
+        db.add(setting)
+        db.flush()
+
+    slots = db.query(StructureNotificationScheduleSlot).filter(
+        StructureNotificationScheduleSlot.structure_id == structure_id
+    ).order_by(StructureNotificationScheduleSlot.notification_time.asc(), StructureNotificationScheduleSlot.id.asc()).all()
+
+    if not slots:
+        default_time = (setting.notification_time or "10:30").strip() or "10:30"
+        slot = StructureNotificationScheduleSlot(
+            structure_id=structure_id,
+            notification_time=default_time,
+            is_enabled=True,
+        )
+        db.add(slot)
+        db.flush()
+        slots = [slot]
+
+    return setting, slots
 
 
 def get_local_now(db: Session) -> datetime:
@@ -224,20 +255,7 @@ def process_daily_structure_notifications(db: Session) -> None:
     } if monitor_ids else {}
 
     for row in active_structures:
-        structure_setting = (
-            db.query(StructureNotificationSetting)
-            .filter(StructureNotificationSetting.structure_id == row["structure_id"])
-            .first()
-        )
-        if not structure_setting:
-            structure_setting = StructureNotificationSetting(
-                structure_id=row["structure_id"],
-                notification_time="08:00",
-                auto_sms_enabled=False,
-                auto_web_enabled=True,
-            )
-            db.add(structure_setting)
-            db.flush()
+        structure_setting, slots = ensure_structure_notification_defaults(db, row["structure_id"])
 
         monitor = monitor_map.get(row["monitor_user_id"])
         monitor_name = monitor.full_name if monitor and monitor.full_name else (monitor.username if monitor else "CuringGuard")
@@ -254,69 +272,75 @@ def process_daily_structure_notifications(db: Session) -> None:
             current_date=today,
         )
 
-        if structure_setting.auto_web_enabled:
-            existing_web = (
-                db.query(NotificationDispatchLog)
-                .filter(
-                    NotificationDispatchLog.structure_id == row["structure_id"],
-                    NotificationDispatchLog.contractor_id == row["contractor_id"],
-                    NotificationDispatchLog.channel == "web",
-                    NotificationDispatchLog.dispatch_type == "daily",
-                    NotificationDispatchLog.dispatch_date == today,
+        matching_slots = [slot for slot in slots if slot.is_enabled and slot.notification_time == current_hhmm]
+        for slot in matching_slots:
+            if structure_setting.auto_web_enabled:
+                existing_web = (
+                    db.query(NotificationDispatchLog)
+                    .filter(
+                        NotificationDispatchLog.structure_id == row["structure_id"],
+                        NotificationDispatchLog.contractor_id == row["contractor_id"],
+                        NotificationDispatchLog.schedule_slot_id == slot.id,
+                        NotificationDispatchLog.channel == "web",
+                        NotificationDispatchLog.dispatch_type == "scheduled",
+                        NotificationDispatchLog.dispatch_date == today,
+                    )
+                    .first()
                 )
-                .first()
-            )
-            if not existing_web:
-                create_web_notification(
-                    db,
-                    user_id=row["contractor_id"],
-                    sender_user_id=row["monitor_user_id"],
-                    structure_id=row["structure_id"],
-                    title=f"Curing Reminder: {row['structure_name']}",
-                    message=message,
-                    notification_type="daily_curing",
-                    channel="web",
-                    dispatch_date=today,
-                )
-                db.add(
-                    NotificationDispatchLog(
+                if not existing_web:
+                    create_web_notification(
+                        db,
+                        user_id=row["contractor_id"],
+                        sender_user_id=row["monitor_user_id"],
                         structure_id=row["structure_id"],
-                        contractor_id=row["contractor_id"],
+                        title=f"Curing Reminder: {row['structure_name']}",
+                        message=message,
+                        notification_type="daily_curing",
                         channel="web",
-                        dispatch_type="daily",
                         dispatch_date=today,
                     )
-                )
-
-        if structure_setting.auto_sms_enabled and structure_setting.notification_time == current_hhmm:
-            existing_sms = (
-                db.query(NotificationDispatchLog)
-                .filter(
-                    NotificationDispatchLog.structure_id == row["structure_id"],
-                    NotificationDispatchLog.contractor_id == row["contractor_id"],
-                    NotificationDispatchLog.channel == "sms",
-                    NotificationDispatchLog.dispatch_type == "scheduled",
-                    NotificationDispatchLog.dispatch_date == today,
-                )
-                .first()
-            )
-            if not existing_sms and row["contractor_mobile"]:
-                sms_result = SMSService.send_sms(
-                    recipients=[row["contractor_mobile"]],
-                    sender_id=sms_sender_id,
-                    message=message,
-                    api_key=settings.get("sms_api_key", ""),
-                )
-                if not is_sms_result_failed(sms_result):
                     db.add(
                         NotificationDispatchLog(
                             structure_id=row["structure_id"],
                             contractor_id=row["contractor_id"],
-                            channel="sms",
+                            schedule_slot_id=slot.id,
+                            channel="web",
                             dispatch_type="scheduled",
                             dispatch_date=today,
                         )
                     )
+
+            if structure_setting.auto_sms_enabled and row["contractor_mobile"]:
+                existing_sms = (
+                    db.query(NotificationDispatchLog)
+                    .filter(
+                        NotificationDispatchLog.structure_id == row["structure_id"],
+                        NotificationDispatchLog.contractor_id == row["contractor_id"],
+                        NotificationDispatchLog.schedule_slot_id == slot.id,
+                        NotificationDispatchLog.channel == "sms",
+                        NotificationDispatchLog.dispatch_type == "scheduled",
+                        NotificationDispatchLog.dispatch_date == today,
+                    )
+                    .first()
+                )
+                if not existing_sms:
+                    sms_result = SMSService.send_sms(
+                        recipients=[row["contractor_mobile"]],
+                        sender_id=sms_sender_id,
+                        message=message,
+                        api_key=settings.get("sms_api_key", ""),
+                    )
+                    if not is_sms_result_failed(sms_result):
+                        db.add(
+                            NotificationDispatchLog(
+                                structure_id=row["structure_id"],
+                                contractor_id=row["contractor_id"],
+                                schedule_slot_id=slot.id,
+                                channel="sms",
+                                dispatch_type="scheduled",
+                                dispatch_date=today,
+                            )
+                        )
 
     db.commit()
 

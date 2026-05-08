@@ -16,6 +16,17 @@ class StructureNotificationSetting(Base):
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
 
+class StructureNotificationScheduleSlot(Base):
+    __tablename__ = "structure_notification_schedule_slots"
+
+    id = Column(Integer, primary_key=True, index=True)
+    structure_id = Column(Integer, ForeignKey("structures.id"), nullable=False, index=True)
+    notification_time = Column(String(5), nullable=False)
+    is_enabled = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
 class WebNotification(Base):
     __tablename__ = "web_notifications"
 
@@ -39,6 +50,7 @@ class NotificationDispatchLog(Base):
     id = Column(Integer, primary_key=True, index=True)
     structure_id = Column(Integer, ForeignKey("structures.id"), nullable=False, index=True)
     contractor_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    schedule_slot_id = Column(Integer, ForeignKey("structure_notification_schedule_slots.id"), nullable=True, index=True)
     channel = Column(String(32), nullable=False)
     dispatch_type = Column(String(50), nullable=False)
     dispatch_date = Column(Date, nullable=False, index=True)

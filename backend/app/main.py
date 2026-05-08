@@ -85,6 +85,14 @@ def ensure_runtime_schema():
         progress_media_columns = {column["name"] for column in inspector.get_columns("curing_progress_media")}
     except Exception:
         progress_media_columns = set()
+    try:
+        structure_notification_setting_columns = {column["name"] for column in inspector.get_columns("structure_notification_settings")}
+    except Exception:
+        structure_notification_setting_columns = set()
+    try:
+        notification_dispatch_log_columns = {column["name"] for column in inspector.get_columns("notification_dispatch_logs")}
+    except Exception:
+        notification_dispatch_log_columns = set()
 
     if "asset_kind" not in drawing_columns:
         with engine.begin() as connection:
@@ -169,6 +177,22 @@ def ensure_runtime_schema():
                 )
             """))
         table_names.add("custom_elements")
+
+    if "structure_notification_schedule_slots" not in table_names:
+        with engine.begin() as connection:
+            connection.execute(text("""
+                CREATE TABLE structure_notification_schedule_slots (
+                    id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                    structure_id INTEGER NOT NULL,
+                    notification_time VARCHAR(5) NOT NULL,
+                    is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    INDEX ix_structure_notification_schedule_slots_structure_id (structure_id),
+                    CONSTRAINT fk_structure_notification_schedule_slots_structure FOREIGN KEY (structure_id) REFERENCES structures (id)
+                )
+            """))
+        table_names.add("structure_notification_schedule_slots")
 
     if "custom_elements" in table_names and "default_elements" in table_names:
         with engine.begin() as connection:
@@ -331,6 +355,39 @@ def ensure_runtime_schema():
                             'Automatic message template for scheduled structure reminders'
                         )
                     """)
+                )
+
+    if "schedule_slot_id" not in notification_dispatch_log_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE notification_dispatch_logs ADD COLUMN schedule_slot_id INTEGER NULL"))
+
+    if "structure_notification_settings" in table_names and "structure_notification_schedule_slots" in table_names:
+        with engine.begin() as connection:
+            structure_rows = connection.execute(text("""
+                SELECT s.id AS structure_id, sns.notification_time
+                FROM structures s
+                LEFT JOIN structure_notification_settings sns ON sns.structure_id = s.id
+                JOIN packages p ON p.id = s.package_id
+                JOIN projects pr ON pr.id = p.project_id
+                WHERE pr.is_deleted = 0 AND p.is_deleted = 0 AND s.is_deleted = 0
+            """)).mappings().all()
+
+            for row in structure_rows:
+                slot_count = connection.execute(
+                    text("SELECT COUNT(*) AS count_value FROM structure_notification_schedule_slots WHERE structure_id = :structure_id"),
+                    {"structure_id": row["structure_id"]},
+                ).mappings().first()
+                if slot_count and int(slot_count["count_value"] or 0) > 0:
+                    continue
+                default_time = (row["notification_time"] or "10:30").strip() if row["notification_time"] else "10:30"
+                if not default_time:
+                    default_time = "10:30"
+                connection.execute(
+                    text("""
+                        INSERT INTO structure_notification_schedule_slots (structure_id, notification_time, is_enabled)
+                        VALUES (:structure_id, :notification_time, TRUE)
+                    """),
+                    {"structure_id": row["structure_id"], "notification_time": default_time},
                 )
 
     if "source_type" not in progress_media_columns:

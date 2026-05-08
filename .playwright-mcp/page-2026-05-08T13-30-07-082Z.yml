@@ -1,0 +1,165 @@
+- generic [ref=e29]:
+  - complementary [ref=e30]:
+    - generic [ref=e32]:
+      - img "CuringGuard Logo" [ref=e33]
+      - generic [ref=e34]: CuringGuard
+    - navigation [ref=e35]:
+      - link "Dashboard" [ref=e36] [cursor=pointer]:
+        - /url: /
+        - img [ref=e37]
+        - generic [ref=e42]: Dashboard
+      - link "Project Hierarchy" [ref=e43] [cursor=pointer]:
+        - /url: /setup
+        - img [ref=e44]
+        - generic [ref=e49]: Project Hierarchy
+      - link "PDF Plans & Canvas" [ref=e50] [cursor=pointer]:
+        - /url: /plans
+        - img [ref=e51]
+        - generic [ref=e53]: PDF Plans & Canvas
+      - link "Curing Progress" [ref=e54] [cursor=pointer]:
+        - /url: /progress
+        - img [ref=e55]
+        - generic [ref=e57]: Curing Progress
+      - link "Contractor Mgmt" [ref=e58] [cursor=pointer]:
+        - /url: /contractors
+        - img [ref=e59]
+        - generic [ref=e64]: Contractor Mgmt
+      - link "Settings" [ref=e65] [cursor=pointer]:
+        - /url: /settings
+        - img [ref=e66]
+        - generic [ref=e69]: Settings
+    - button "Sign Out" [ref=e71]:
+      - img [ref=e72]
+      - generic [ref=e75]: Sign Out
+  - generic [ref=e76]:
+    - banner [ref=e77]:
+      - button [ref=e78]:
+        - img [ref=e79]
+      - generic [ref=e80]:
+        - button [ref=e82]:
+          - img [ref=e83]
+        - generic [ref=e86] [cursor=pointer]: A
+    - main [ref=e87]:
+      - generic [ref=e758]:
+        - generic [ref=e759]:
+          - generic [ref=e760]:
+            - heading "Hierarchy Configuration" [level=1] [ref=e761]
+            - paragraph [ref=e762]: "Monitor Dashboard: Define architectural scope and deploy contractors."
+          - generic [ref=e763]:
+            - button "Total View" [ref=e764]
+            - button "Structure View" [ref=e765]
+        - generic [ref=e766]:
+          - generic [ref=e767]:
+            - generic [ref=e768]:
+              - generic [ref=e769]:
+                - img [ref=e770]
+                - heading "Projects" [level=2] [ref=e775]
+              - button [ref=e776]:
+                - img [ref=e777]
+            - generic [ref=e778]:
+              - generic [ref=e779] [cursor=pointer]:
+                - generic [ref=e780]:
+                  - heading "project1" [level=3] [ref=e781]
+                  - generic [ref=e782]: Active
+                - generic [ref=e783]:
+                  - button [ref=e784]:
+                    - img [ref=e785]
+                  - button [ref=e788]:
+                    - img [ref=e789]
+                  - img [ref=e792]
+              - generic [ref=e794] [cursor=pointer]:
+                - generic [ref=e795]:
+                  - heading "project_2" [level=3] [ref=e796]
+                  - generic [ref=e797]: Active
+                - generic [ref=e798]:
+                  - button [ref=e799]:
+                    - img [ref=e800]
+                  - button [ref=e803]:
+                    - img [ref=e804]
+                  - img [ref=e807]
+          - generic [ref=e809]:
+            - generic [ref=e810]:
+              - generic [ref=e811]:
+                - img [ref=e812]
+                - heading "Packages" [level=2] [ref=e816]
+              - button [ref=e817]:
+                - img [ref=e818]
+            - generic [ref=e820] [cursor=pointer]:
+              - heading "package 12" [level=3] [ref=e821]
+              - generic [ref=e822]:
+                - button [ref=e823]:
+                  - img [ref=e824]
+                - button [ref=e827]:
+                  - img [ref=e828]
+                - img [ref=e831]
+          - generic [ref=e833]:
+            - generic [ref=e834]:
+              - generic [ref=e835]:
+                - img [ref=e836]
+                - heading "Structures" [level=2] [ref=e840]
+              - button [ref=e841]:
+                - img [ref=e842]
+            - generic [ref=e844]:
+              - generic [ref=e845]:
+                - heading "main bldg" [level=3] [ref=e846]
+                - generic [ref=e847]:
+                  - button [ref=e848]:
+                    - img [ref=e849]
+                  - button [ref=e852]:
+                    - img [ref=e853]
+              - generic [ref=e856]:
+                - generic [ref=e858]: Assigned Contractor
+                - generic [ref=e859]:
+                  - generic [ref=e861]:
+                    - generic [ref=e862]:
+                      - img [ref=e864]
+                      - generic [ref=e869]: oli
+                    - button "Revoke contractor" [ref=e870]:
+                      - img [ref=e871]
+                  - button "+ Create Contractor" [ref=e874]
+                - generic [ref=e875]:
+                  - generic [ref=e876]:
+                    - img [ref=e877]
+                    - generic [ref=e882]: Notifications
+                  - generic [ref=e883]:
+                    - generic [ref=e884]:
+                      - generic [ref=e885]:
+                        - generic [ref=e886]: SMS
+                        - button [active] [ref=e887]
+                      - generic [ref=e889]:
+                        - generic [ref=e890]: WEB
+                        - button [ref=e891]
+                      - generic [ref=e893]:
+                        - generic [ref=e894]: Whats'app
+                        - button [ref=e895]
+                    - generic [ref=e897]:
+                      - generic [ref=e898]:
+                        - generic [ref=e899]: "0"
+                        - generic [ref=e900]: "2"
+                        - generic [ref=e901]: "4"
+                        - generic [ref=e902]: "6"
+                        - generic [ref=e903]: "8"
+                        - generic [ref=e904]: "10"
+                        - generic [ref=e905]: "12"
+                        - generic [ref=e906]: "14"
+                        - generic [ref=e907]: "16"
+                        - generic [ref=e908]: "18"
+                        - generic [ref=e909]: "20"
+                        - generic [ref=e910]: "22"
+                        - generic [ref=e911]: "0"
+                      - button "8:00 AM" [ref=e914]
+                    - generic [ref=e916]:
+                      - textbox [ref=e917]: 08:00
+                      - button "8:00 AM" [ref=e918]
+                      - button "Disable" [ref=e919]
+                      - button "Delete" [ref=e920]
+                - generic [ref=e921]:
+                  - generic [ref=e923]: Plans
+                  - generic [ref=e926]: No plan files uploaded yet.
+              - generic [ref=e927]:
+                - button "Upload Plan" [ref=e928]:
+                  - img [ref=e929]
+                  - text: Upload Plan
+                - button "Blank Drawing" [ref=e930]:
+                  - img [ref=e931]
+                  - text: Blank Drawing

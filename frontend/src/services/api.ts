@@ -480,8 +480,20 @@ export const notificationService = {
     const response = await api.get(`/notifications/structures/${structureId}/draft`);
     return response.data;
   },
-  updateStructureSettings: async (structureId: number, data: { notification_time?: string; auto_sms_enabled?: boolean; auto_web_enabled?: boolean }) => {
+  updateStructureSettings: async (structureId: number, data: { auto_sms_enabled?: boolean; auto_web_enabled?: boolean }) => {
     const response = await api.patch(`/notifications/structures/${structureId}/settings`, data);
+    return response.data;
+  },
+  createStructureSlot: async (structureId: number, data: { notification_time: string }) => {
+    const response = await api.post(`/notifications/structures/${structureId}/slots`, data);
+    return response.data;
+  },
+  updateStructureSlot: async (structureId: number, slotId: number, data: { notification_time?: string; is_enabled?: boolean }) => {
+    const response = await api.patch(`/notifications/structures/${structureId}/slots/${slotId}`, data);
+    return response.data;
+  },
+  deleteStructureSlot: async (structureId: number, slotId: number) => {
+    const response = await api.delete(`/notifications/structures/${structureId}/slots/${slotId}`);
     return response.data;
   },
 };

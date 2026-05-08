@@ -1,23 +1,81 @@
 from datetime import datetime
+import re
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from backend.app.core.auth import get_current_user
 from backend.app.core.database import get_db
-from backend.app.models.notifications import StructureNotificationSetting, WebNotification
-from backend.app.models.system import SystemSetting
+from backend.app.models.notifications import (
+    StructureNotificationScheduleSlot,
+    StructureNotificationSetting,
+    WebNotification,
+)
 from backend.app.models.users import User, UserRole
 from backend.app.schemas.notifications import (
     CustomNotificationCreate,
+    StructureNotificationScheduleSlotCreate,
+    StructureNotificationScheduleSlotResponse,
+    StructureNotificationScheduleSlotUpdate,
     StructureNotificationSettingResponse,
     StructureNotificationSettingUpdate,
     WebNotificationResponse,
 )
-from backend.app.services.notification_service import build_structure_message_draft, create_web_notification, get_sms_sender_id, get_system_setting_map, is_sms_result_failed
+from backend.app.services.notification_service import (
+    build_structure_message_draft,
+    create_web_notification,
+    ensure_structure_notification_defaults,
+    get_sms_sender_id,
+    get_system_setting_map,
+    is_sms_result_failed,
+)
 from backend.app.services.sms_service import SMSService
 
 router = APIRouter(prefix="/api/notifications", tags=["Notifications"])
+
+TIME_RE = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+
+
+def _validate_slot_time(value: str) -> str:
+    normalized = (value or "").strip()
+    if not TIME_RE.match(normalized):
+        raise HTTPException(status_code=400, detail="Notification time must use HH:MM format.")
+    return normalized
+
+
+def _ensure_owned_structure(db: Session, structure_id: int, monitor_id: int):
+    owned_structure = db.execute(
+        text(
+            """
+        SELECT s.id
+        FROM structures s
+        JOIN packages p ON p.id = s.package_id
+        JOIN projects pr ON pr.id = p.project_id
+        WHERE s.id = :structure_id AND pr.user_id = :monitor_id AND pr.is_deleted = 0 AND p.is_deleted = 0 AND s.is_deleted = 0
+        """
+        ),
+        {"structure_id": structure_id, "monitor_id": monitor_id},
+    ).mappings().first()
+    if not owned_structure:
+        raise HTTPException(status_code=404, detail="Structure not found")
+
+
+def _slot_response(slot: StructureNotificationScheduleSlot) -> StructureNotificationScheduleSlotResponse:
+    return StructureNotificationScheduleSlotResponse(
+        id=slot.id,
+        notification_time=slot.notification_time,
+        is_enabled=slot.is_enabled,
+    )
+
+
+def _settings_response(setting: StructureNotificationSetting, slots: list[StructureNotificationScheduleSlot]) -> StructureNotificationSettingResponse:
+    return StructureNotificationSettingResponse(
+        structure_id=setting.structure_id,
+        auto_sms_enabled=setting.auto_sms_enabled,
+        auto_web_enabled=setting.auto_web_enabled,
+        slots=[_slot_response(slot) for slot in slots],
+    )
 
 
 @router.get("/web", response_model=list[WebNotificationResponse])
@@ -51,30 +109,25 @@ def get_structure_notification_settings(db: Session = Depends(get_db), current_u
     if current_user.role != UserRole.MONITOR:
         raise HTTPException(status_code=403, detail="Only monitor admin can view structure notification settings.")
 
-    rows = db.execute(
+    structure_rows = db.execute(
         text(
             """
-        SELECT s.id AS structure_id, sns.notification_time, sns.auto_sms_enabled, sns.auto_web_enabled
+        SELECT s.id AS structure_id
         FROM structures s
         JOIN packages p ON p.id = s.package_id
         JOIN projects pr ON pr.id = p.project_id
-        LEFT JOIN structure_notification_settings sns ON sns.structure_id = s.id
         WHERE pr.user_id = :monitor_id AND pr.is_deleted = 0 AND p.is_deleted = 0 AND s.is_deleted = 0
         ORDER BY s.id ASC
         """
         ),
         {"monitor_id": current_user.id},
     ).mappings().all()
-    response = []
-    for row in rows:
-        response.append(
-            StructureNotificationSettingResponse(
-                structure_id=row["structure_id"],
-                notification_time=row["notification_time"] or "08:00",
-                auto_sms_enabled=bool(row["auto_sms_enabled"]) if row["auto_sms_enabled"] is not None else False,
-                auto_web_enabled=bool(row["auto_web_enabled"]) if row["auto_web_enabled"] is not None else True,
-            )
-        )
+
+    response: list[StructureNotificationSettingResponse] = []
+    for row in structure_rows:
+        setting, slots = ensure_structure_notification_defaults(db, row["structure_id"])
+        response.append(_settings_response(setting, slots))
+    db.commit()
     return response
 
 
@@ -102,34 +155,9 @@ def update_structure_notification_setting(
     if current_user.role != UserRole.MONITOR:
         raise HTTPException(status_code=403, detail="Only monitor admin can update structure notification settings.")
 
-    owned_structure = db.execute(
-        text(
-            """
-        SELECT s.id
-        FROM structures s
-        JOIN packages p ON p.id = s.package_id
-        JOIN projects pr ON pr.id = p.project_id
-        WHERE s.id = :structure_id AND pr.user_id = :monitor_id AND pr.is_deleted = 0 AND p.is_deleted = 0 AND s.is_deleted = 0
-        """
-        ),
-        {"structure_id": structure_id, "monitor_id": current_user.id},
-    ).mappings().first()
-    if not owned_structure:
-        raise HTTPException(status_code=404, detail="Structure not found")
+    _ensure_owned_structure(db, structure_id, current_user.id)
+    setting, slots = ensure_structure_notification_defaults(db, structure_id)
 
-    setting = db.query(StructureNotificationSetting).filter(StructureNotificationSetting.structure_id == structure_id).first()
-    if not setting:
-        setting = StructureNotificationSetting(
-            structure_id=structure_id,
-            notification_time="08:00",
-            auto_sms_enabled=False,
-            auto_web_enabled=True,
-        )
-        db.add(setting)
-        db.flush()
-
-    if payload.notification_time is not None:
-        setting.notification_time = payload.notification_time
     if payload.auto_sms_enabled is not None:
         setting.auto_sms_enabled = payload.auto_sms_enabled
     if payload.auto_web_enabled is not None:
@@ -137,12 +165,100 @@ def update_structure_notification_setting(
 
     db.commit()
     db.refresh(setting)
-    return StructureNotificationSettingResponse(
-        structure_id=setting.structure_id,
-        notification_time=setting.notification_time,
-        auto_sms_enabled=setting.auto_sms_enabled,
-        auto_web_enabled=setting.auto_web_enabled,
+    return _settings_response(setting, slots)
+
+
+@router.post("/structures/{structure_id}/slots", response_model=StructureNotificationScheduleSlotResponse)
+def create_structure_notification_slot(
+    structure_id: int,
+    payload: StructureNotificationScheduleSlotCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if current_user.role != UserRole.MONITOR:
+        raise HTTPException(status_code=403, detail="Only monitor admin can add structure notification times.")
+
+    _ensure_owned_structure(db, structure_id, current_user.id)
+    ensure_structure_notification_defaults(db, structure_id)
+    normalized_time = _validate_slot_time(payload.notification_time)
+
+    duplicate = db.query(StructureNotificationScheduleSlot).filter(
+        StructureNotificationScheduleSlot.structure_id == structure_id,
+        StructureNotificationScheduleSlot.notification_time == normalized_time,
+    ).first()
+    if duplicate:
+        raise HTTPException(status_code=400, detail="This structure already has that notification time.")
+
+    slot = StructureNotificationScheduleSlot(
+        structure_id=structure_id,
+        notification_time=normalized_time,
+        is_enabled=True,
     )
+    db.add(slot)
+    db.commit()
+    db.refresh(slot)
+    return _slot_response(slot)
+
+
+@router.patch("/structures/{structure_id}/slots/{slot_id}", response_model=StructureNotificationScheduleSlotResponse)
+def update_structure_notification_slot(
+    structure_id: int,
+    slot_id: int,
+    payload: StructureNotificationScheduleSlotUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if current_user.role != UserRole.MONITOR:
+        raise HTTPException(status_code=403, detail="Only monitor admin can update structure notification times.")
+
+    _ensure_owned_structure(db, structure_id, current_user.id)
+    slot = db.query(StructureNotificationScheduleSlot).filter(
+        StructureNotificationScheduleSlot.id == slot_id,
+        StructureNotificationScheduleSlot.structure_id == structure_id,
+    ).first()
+    if not slot:
+        raise HTTPException(status_code=404, detail="Notification time not found.")
+
+    if payload.notification_time is not None:
+        normalized_time = _validate_slot_time(payload.notification_time)
+        duplicate = db.query(StructureNotificationScheduleSlot).filter(
+            StructureNotificationScheduleSlot.structure_id == structure_id,
+            StructureNotificationScheduleSlot.notification_time == normalized_time,
+            StructureNotificationScheduleSlot.id != slot_id,
+        ).first()
+        if duplicate:
+            raise HTTPException(status_code=400, detail="This structure already has that notification time.")
+        slot.notification_time = normalized_time
+
+    if payload.is_enabled is not None:
+        slot.is_enabled = payload.is_enabled
+
+    db.commit()
+    db.refresh(slot)
+    return _slot_response(slot)
+
+
+@router.delete("/structures/{structure_id}/slots/{slot_id}")
+def delete_structure_notification_slot(
+    structure_id: int,
+    slot_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if current_user.role != UserRole.MONITOR:
+        raise HTTPException(status_code=403, detail="Only monitor admin can delete structure notification times.")
+
+    _ensure_owned_structure(db, structure_id, current_user.id)
+    slot = db.query(StructureNotificationScheduleSlot).filter(
+        StructureNotificationScheduleSlot.id == slot_id,
+        StructureNotificationScheduleSlot.structure_id == structure_id,
+    ).first()
+    if not slot:
+        raise HTTPException(status_code=404, detail="Notification time not found.")
+
+    db.delete(slot)
+    db.commit()
+    return {"status": "success"}
 
 
 @router.post("/custom-message")
@@ -166,7 +282,6 @@ def send_custom_notification(
     sms_api_key = system_settings.get("sms_api_key", "")
     sms_sender_id = get_sms_sender_id(system_settings)
 
-    sender_name = (current_user.full_name or current_user.username or "CuringGuard").strip()
     message = payload.message.strip()
     if not message:
         raise HTTPException(status_code=400, detail="Message cannot be empty.")
