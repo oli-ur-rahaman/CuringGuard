@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Building2, PackageOpen, FolderGit2, 
-  ChevronRight, Plus, UserPlus, HardHat, ChevronDown, Loader2, Trash2, FileText, PenSquare, BellRing, X, UserMinus
+  ChevronRight, Plus, UserPlus, HardHat, ChevronDown, Loader2, Trash2, FileText, PenSquare, BellRing, X, UserMinus, Dices
 } from 'lucide-react';
 import { hierarchyService, userService, authService, curingService, notificationService } from '../services/api';
 
@@ -806,11 +806,11 @@ export default function ProjectSetup() {
                       setSelectedNotificationSlotByStructure((prev) => ({ ...prev, [structureId]: slot.id }));
                     }}
                     onPointerDown={(event) => handleNotificationSlotPointerDown(structureId, slot, event)}
-                    className={`absolute top-1/2 z-10 h-6 w-6 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 ${slot.is_enabled ? 'border-blue-500 bg-blue-500' : 'border-slate-300 bg-white'} ${isSelected ? 'shadow-[0_0_0_4px_rgba(59,130,246,0.14),0_6px_16px_rgba(59,130,246,0.28)]' : 'shadow-[0_4px_10px_rgba(15,23,42,0.12)]'}`}
+                    className={`absolute top-1/2 z-10 flex h-5 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-[6px] border ${slot.is_enabled ? 'border-blue-500 bg-blue-500 text-white' : 'border-slate-300 bg-white text-slate-400'} ${isSelected ? 'shadow-[0_0_0_4px_rgba(59,130,246,0.14),0_6px_16px_rgba(59,130,246,0.28)]' : 'shadow-[0_4px_10px_rgba(15,23,42,0.12)]'}`}
                     style={{ left: `${leftPercent}%` }}
                     title={formatSlotTimeLabel(slot.notification_time)}
                   >
-                    <span className="absolute inset-[3px] rounded-full border border-white/80 bg-blue-600/85" />
+                    <Dices className="h-3 w-3" strokeWidth={2.25} />
                   </button>
                 );
               })}
