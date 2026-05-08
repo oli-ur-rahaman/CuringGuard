@@ -2461,6 +2461,14 @@ export default function Plans() {
     });
   };
 
+  const stopSelectedInfoTouchPropagation = (event: React.TouchEvent<HTMLElement>) => {
+    event.stopPropagation();
+  };
+
+  const stopSelectedInfoPointerPropagation = (event: React.PointerEvent<HTMLElement>) => {
+    event.stopPropagation();
+  };
+
   const handleOpenEditSelectedElements = () => {
     if (selectedAnnotations.length === 0) return;
 
@@ -3187,8 +3195,13 @@ export default function Plans() {
             className={`absolute z-20 w-[312px] rounded-[22px] border border-slate-200 bg-white/96 px-4 py-3 shadow-xl backdrop-blur ${selectedInfoDrag.active ? 'cursor-grabbing' : 'cursor-default'}`}
             style={{ left: selectedInfoPosition.x, top: selectedInfoPosition.y }}
             onPointerDown={handleSelectedInfoPointerDown}
+            onPointerUp={stopSelectedInfoPointerPropagation}
             onPointerEnter={() => setSelectedInfoHovered(true)}
             onPointerLeave={() => setSelectedInfoHovered(false)}
+            onTouchStart={stopSelectedInfoTouchPropagation}
+            onTouchMove={stopSelectedInfoTouchPropagation}
+            onTouchEnd={stopSelectedInfoTouchPropagation}
+            onTouchCancel={stopSelectedInfoTouchPropagation}
             onClick={(event) => event.stopPropagation()}
             onDoubleClick={(event) => event.stopPropagation()}
           >
@@ -3218,6 +3231,10 @@ export default function Plans() {
                   <button
                     type="button"
                     onClick={() => { void openProgressModalForAnnotation(singleSelectedAnnotation); }}
+                    onPointerDown={stopSelectedInfoPointerPropagation}
+                    onPointerUp={stopSelectedInfoPointerPropagation}
+                    onTouchStart={stopSelectedInfoTouchPropagation}
+                    onTouchEnd={stopSelectedInfoTouchPropagation}
                     className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
                     title="Add Progress"
                   >
@@ -3226,6 +3243,10 @@ export default function Plans() {
                   <button
                     type="button"
                     onClick={() => setPresentationElementId(singleSelectedAnnotation.id)}
+                    onPointerDown={stopSelectedInfoPointerPropagation}
+                    onPointerUp={stopSelectedInfoPointerPropagation}
+                    onTouchStart={stopSelectedInfoTouchPropagation}
+                    onTouchEnd={stopSelectedInfoTouchPropagation}
                     className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
                     title="Presentation"
                   >
@@ -3239,6 +3260,10 @@ export default function Plans() {
                   setSelectedInfoClosed(true);
                   setSelectedInfoHovered(false);
                 }}
+                onPointerDown={stopSelectedInfoPointerPropagation}
+                onPointerUp={stopSelectedInfoPointerPropagation}
+                onTouchStart={stopSelectedInfoTouchPropagation}
+                onTouchEnd={stopSelectedInfoTouchPropagation}
                 className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
                 title="Close"
               >
@@ -3297,6 +3322,10 @@ export default function Plans() {
                     if (typeof input.showPicker === 'function') input.showPicker();
                     else input.click();
                   }}
+                  onPointerDown={stopSelectedInfoPointerPropagation}
+                  onPointerUp={stopSelectedInfoPointerPropagation}
+                  onTouchStart={stopSelectedInfoTouchPropagation}
+                  onTouchEnd={stopSelectedInfoTouchPropagation}
                   disabled={saveState === 'saving'}
                   className="text-sm font-black uppercase tracking-[0.18em] text-blue-600 transition-colors hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
                 >

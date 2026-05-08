@@ -267,6 +267,7 @@ export default function ElementPresentationOverlay({ drawingElementId, open, onC
   const [mediaViewerOpen, setMediaViewerOpen] = useState(false);
   const [isMediaFullscreen, setIsMediaFullscreen] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
+  const [isCompactLayout, setIsCompactLayout] = useState(() => (typeof window !== 'undefined' ? window.innerWidth < 1024 : false));
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [mouseViewport, setMouseViewport] = useState({ x: 0, y: 0, visible: false });
   const objectUrlsRef = useRef<string[]>([]);
@@ -429,6 +430,13 @@ export default function ElementPresentationOverlay({ drawingElementId, open, onC
     };
     document.addEventListener('fullscreenchange', syncFullscreen);
     return () => document.removeEventListener('fullscreenchange', syncFullscreen);
+  }, []);
+
+  useEffect(() => {
+    const syncLayout = () => setIsCompactLayout(window.innerWidth < 1024);
+    syncLayout();
+    window.addEventListener('resize', syncLayout);
+    return () => window.removeEventListener('resize', syncLayout);
   }, []);
 
   useEffect(() => {
@@ -705,7 +713,7 @@ export default function ElementPresentationOverlay({ drawingElementId, open, onC
           <div className="flex flex-1 items-center justify-center text-sm font-bold text-slate-500">Failed to load presentation.</div>
         ) : (
           <>
-            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto lg:overflow-hidden">
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-[96px] lg:overflow-hidden lg:pb-0">
             <div className="grid grid-cols-1 lg:min-h-0 lg:flex-1 lg:grid-cols-[30rem_1fr] xl:grid-cols-[34rem_1fr]">
               <section className="order-1 flex min-h-0 flex-col border-b border-slate-200 bg-white lg:border-b-0 lg:border-r">
                 <div className="border-b border-slate-200 px-4 py-4 sm:px-6 sm:py-5 lg:px-8 lg:py-6">
@@ -874,7 +882,7 @@ export default function ElementPresentationOverlay({ drawingElementId, open, onC
                 </div>
               </section>
 
-              <section className="relative order-2 flex min-h-[70dvh] flex-col bg-[#e5eaf1] lg:min-h-0">
+              <section className="relative order-2 flex min-h-[72dvh] flex-none flex-col bg-[#e5eaf1] lg:min-h-0 lg:flex-1">
                 <div className="pointer-events-none absolute left-1/2 top-3 z-20 -translate-x-1/2 sm:top-5">
                   <div className="pointer-events-auto flex items-center gap-1.5 rounded-2xl border border-slate-800 bg-slate-950/92 px-2 py-1.5 shadow-xl sm:gap-2 sm:px-3 sm:py-2">
                     <button type="button" onClick={() => setScale((current) => current * 1.15)} className="rounded-xl bg-slate-900 p-2 text-slate-200 hover:bg-slate-800 hover:text-white"><ZoomIn className="h-4 w-4" /></button>
@@ -891,7 +899,7 @@ export default function ElementPresentationOverlay({ drawingElementId, open, onC
                 <div
                   ref={viewportRef}
                   className={`relative flex-1 overflow-hidden ${isPanning ? 'cursor-grabbing' : 'cursor-none'}`}
-                  style={{ touchAction: 'none' }}
+                  style={{ touchAction: isCompactLayout ? 'pan-y' : 'none' }}
                   onWheel={(event) => {
                     event.preventDefault();
                     const rect = viewportRef.current?.getBoundingClientRect();
@@ -928,6 +936,7 @@ export default function ElementPresentationOverlay({ drawingElementId, open, onC
                     }
                   }}
                   onTouchMove={(event) => {
+                    if (activeTouchPointsRef.current.size < 2 && isCompactLayout) return;
                     for (const touch of Array.from(event.changedTouches)) {
                       activeTouchPointsRef.current.set(touch.identifier, { x: touch.clientX, y: touch.clientY });
                     }
@@ -974,21 +983,21 @@ export default function ElementPresentationOverlay({ drawingElementId, open, onC
               </section>
             </div>
 
-            <div className="border-t border-slate-200 bg-white px-3 py-2 sm:px-6 sm:py-3">
-              <div ref={timelineRailRef} className="flex gap-2 overflow-x-auto sm:gap-3">
+            <div className="border-t border-slate-200 bg-white/98 px-2 py-1.5 shadow-[0_-6px_20px_rgba(15,23,42,0.08)] backdrop-blur sm:px-4 sm:py-2 lg:px-6 lg:py-3">
+              <div ref={timelineRailRef} className="flex gap-1.5 overflow-x-auto sm:gap-2 lg:gap-3">
                 {timelineDays.map((day, index) => (
                   <button
                     key={day.date}
                     type="button"
                     onClick={() => setSelectedDayIndex(index)}
-                    className={`min-w-[96px] rounded-2xl border px-2.5 py-2 text-left transition-colors sm:min-w-[140px] sm:px-4 sm:py-3 ${timelineClasses(day, index === selectedDayIndex)}`}
+                    className={`min-w-[78px] rounded-xl border px-2 py-1.5 text-left transition-colors sm:min-w-[104px] sm:rounded-2xl sm:px-2.5 sm:py-2 lg:min-w-[140px] lg:px-4 lg:py-3 ${timelineClasses(day, index === selectedDayIndex)}`}
                   >
-                    <div className="text-[10px] font-black uppercase tracking-[0.16em] sm:text-xs sm:tracking-[0.18em]">
+                    <div className="text-[9px] font-black uppercase tracking-[0.12em] sm:text-[10px] sm:tracking-[0.16em] lg:text-xs lg:tracking-[0.18em]">
                       {formatDateLabel(day.date)}
                       {day.date === currentDateIso && <span className={`ml-1 ${index === selectedDayIndex ? 'text-white/70' : 'text-slate-400'}`}>(Today)</span>}
                     </div>
-                    <div className="mt-2 text-xs font-black sm:text-sm">{timelineLabel(day)}</div>
-                    <div className={`mt-1 text-[10px] font-bold sm:text-[11px] ${index === selectedDayIndex ? 'text-white/70' : 'text-slate-400'}`}>
+                    <div className="mt-1 text-[10px] font-black sm:mt-1.5 sm:text-xs lg:mt-2 lg:text-sm">{timelineLabel(day)}</div>
+                    <div className={`mt-0.5 text-[9px] font-bold sm:text-[10px] lg:mt-1 lg:text-[11px] ${index === selectedDayIndex ? 'text-white/70' : 'text-slate-400'}`}>
                       {`${day.entry_count} entry • ${day.media_count} media`}
                     </div>
                   </button>
