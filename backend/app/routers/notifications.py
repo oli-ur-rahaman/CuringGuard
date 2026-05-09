@@ -29,8 +29,10 @@ from backend.app.services.notification_service import (
     get_sms_sender_id,
     get_system_setting_map,
     is_sms_result_failed,
+    is_whatsapp_result_failed,
 )
 from backend.app.services.sms_service import SMSService
+from backend.app.services.whatsapp_service import WhatsAppService
 
 router = APIRouter(prefix="/api/notifications", tags=["Notifications"])
 
@@ -74,6 +76,7 @@ def _settings_response(setting: StructureNotificationSetting, slots: list[Struct
         structure_id=setting.structure_id,
         auto_sms_enabled=setting.auto_sms_enabled,
         auto_web_enabled=setting.auto_web_enabled,
+        auto_whatsapp_enabled=setting.auto_whatsapp_enabled,
         slots=[_slot_response(slot) for slot in slots],
     )
 
@@ -162,6 +165,8 @@ def update_structure_notification_setting(
         setting.auto_sms_enabled = payload.auto_sms_enabled
     if payload.auto_web_enabled is not None:
         setting.auto_web_enabled = payload.auto_web_enabled
+    if payload.auto_whatsapp_enabled is not None:
+        setting.auto_whatsapp_enabled = payload.auto_whatsapp_enabled
 
     db.commit()
     db.refresh(setting)
@@ -281,19 +286,34 @@ def send_custom_notification(
     system_settings = get_system_setting_map(db)
     sms_api_key = system_settings.get("sms_api_key", "")
     sms_sender_id = get_sms_sender_id(system_settings)
+    whatsapp_api_key = system_settings.get("whatsapp_api_key", "")
 
     message = payload.message.strip()
     if not message:
         raise HTTPException(status_code=400, detail="Message cannot be empty.")
 
-    sms_result = SMSService.send_sms(
-        recipients=[contractor.mobile_number],
-        sender_id=sms_sender_id,
-        message=message,
-        api_key=sms_api_key,
-    )
-    if is_sms_result_failed(sms_result):
-        raise HTTPException(status_code=400, detail=f"SMS provider rejected the message: {sms_result.get('message', 'Unknown error')}")
+    channel = (payload.channel or "sms").strip().lower()
+    if channel == "sms":
+        sms_result = SMSService.send_sms(
+            recipients=[contractor.mobile_number],
+            sender_id=sms_sender_id,
+            message=message,
+            api_key=sms_api_key,
+        )
+        if is_sms_result_failed(sms_result):
+            raise HTTPException(status_code=400, detail=f"SMS provider rejected the message: {sms_result.get('message', 'Unknown error')}")
+        transport_result = sms_result
+    elif channel == "whatsapp":
+        whatsapp_result = WhatsAppService.send_text_message(
+            api_key=whatsapp_api_key,
+            to_number=contractor.mobile_number,
+            message=message,
+        )
+        if is_whatsapp_result_failed(whatsapp_result):
+            raise HTTPException(status_code=400, detail=f"WhatsApp provider rejected the message: {whatsapp_result.get('message', 'Unknown error')}")
+        transport_result = whatsapp_result
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported notification channel")
 
     create_web_notification(
         db,
@@ -307,4 +327,4 @@ def send_custom_notification(
     )
     db.commit()
 
-    return {"status": "success", "sms_result": sms_result}
+    return {"status": "success", "channel": channel, "provider_result": transport_result}

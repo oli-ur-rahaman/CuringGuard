@@ -13,12 +13,14 @@ class StructureNotificationSettingResponse(BaseModel):
     structure_id: int
     auto_sms_enabled: bool
     auto_web_enabled: bool
+    auto_whatsapp_enabled: bool
     slots: list[StructureNotificationScheduleSlotResponse]
 
 
 class StructureNotificationSettingUpdate(BaseModel):
     auto_sms_enabled: Optional[bool] = None
     auto_web_enabled: Optional[bool] = None
+    auto_whatsapp_enabled: Optional[bool] = None
 
 
 class StructureNotificationScheduleSlotCreate(BaseModel):
@@ -34,6 +36,7 @@ class CustomNotificationCreate(BaseModel):
     contractor_id: int
     message: str
     structure_id: Optional[int] = None
+    channel: Optional[str] = "sms"
 
 
 class WebNotificationResponse(BaseModel):

@@ -3,8 +3,17 @@
 > vite --host --host 0.0.0.0 --port 5173 --strictPort
 
 
-  [32m[1mVITE[22m v8.0.8[39m  [2mready in [0m[1m876[22m[2m[0m ms[22m
+  [32m[1mVITE[22m v8.0.8[39m  [2mready in [0m[1m1037[22m[2m[0m ms[22m
 
   [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m5173[22m/[39m
   [32m➜[39m  [1mNetwork[22m: [36mhttp://192.168.0.103:[1m5173[22m/[39m
 [2m[32m  ➜[39m[22m[2m  press [22m[1mh + enter[22m[2m to show help[22m
+[2m9:28:02 PM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/auth/login[39m
+Error: connect ECONNREFUSED 127.0.0.1:8010
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1634:16)
+[2m9:29:00 PM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/auth/login[39m
+Error: connect ECONNREFUSED 127.0.0.1:8010
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1634:16)
+[2m9:29:14 PM[22m [36m[1m[vite][22m[39m [32mvite.config.ts changed, restarting server...[39m
+[2m9:29:14 PM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.tsx, /src/pages/Contractors.tsx, /src/components/Layout.tsx, /src/pages/Settings.tsx, /src/pages/CuringProgress.tsx, /src/pages/Login.tsx, /src/pages/Dashboard.tsx, /src/pages/ProjectSetup.tsx, /src/pages/Superadmin.tsx, /src/pages/Plans.tsx, /src/components/ElementPresentationOverlay.tsx, /src/index.css[22m
+[2m9:29:15 PM[22m [36m[1m[vite][22m[39m server restarted.

@@ -203,7 +203,7 @@ export default function Dashboard() {
     return rows.filter((row) => row.structure_id === selectedStructureId);
   }, [summary, selectedStructureId]);
 
-  const handleSendCustomMessage = async () => {
+  const handleSendCustomMessage = async (channel: 'sms' | 'whatsapp') => {
     if (!draft?.contractor_id) {
       alert('Select a structure with assigned contractor first.');
       return;
@@ -220,8 +220,9 @@ export default function Dashboard() {
         contractor_id: draft.contractor_id,
         structure_id: draft.structure_id,
         message: trimmedMessage,
+        channel,
       });
-      alert('Instruction sent successfully.');
+      alert(`${channel === 'sms' ? 'SMS' : 'WhatsApp'} instruction sent successfully.`);
     } catch (error: any) {
       alert(error.response?.data?.detail || 'Failed to send instruction.');
     } finally {
@@ -522,14 +523,22 @@ export default function Dashboard() {
                 />
               </div>
 
-              <div className="flex justify-end">
+              <div className="flex flex-wrap justify-end gap-3">
                 <button
-                  onClick={() => { void handleSendCustomMessage(); }}
+                  onClick={() => { void handleSendCustomMessage('sms'); }}
                   disabled={messageSaving || !draft?.contractor_id}
                   className="inline-flex h-[48px] items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 text-sm font-black text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {messageSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageSquareText className="h-4 w-4" />}
-                  Send Message
+                  Send SMS
+                </button>
+                <button
+                  onClick={() => { void handleSendCustomMessage('whatsapp'); }}
+                  disabled={messageSaving || !draft?.contractor_id}
+                  className="inline-flex h-[48px] items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 text-sm font-black text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {messageSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Phone className="h-4 w-4" />}
+                  Send WhatsApp
                 </button>
               </div>
             </div>

@@ -12,6 +12,7 @@ class StructureNotificationSetting(Base):
     notification_time = Column(String(5), nullable=True)
     auto_sms_enabled = Column(Boolean, nullable=False, default=False)
     auto_web_enabled = Column(Boolean, nullable=False, default=True)
+    auto_whatsapp_enabled = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 

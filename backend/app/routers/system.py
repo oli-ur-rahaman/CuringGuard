@@ -86,11 +86,19 @@ def _get_or_create_system_setting(db: Session) -> dict:
         "notifications",
         "Automatic message template for scheduled structure reminders",
     )
+    whatsapp_api_row = _ensure_setting_row(
+        db,
+        "whatsapp_api_key",
+        "",
+        "notifications",
+        "Wasender API key used for WhatsApp notifications",
+    )
     return {
         "manual_file_entry_enabled": str(manual_row["setting_value"]).lower() != "no",
         "server_time_offset_hours": int(offset_row["setting_value"] or 0),
         "sms_api_key": sms_api_row["setting_value"] or "",
         "sms_sender_id": sms_sender_row["setting_value"] or "8809617612022",
+        "whatsapp_api_key": whatsapp_api_row["setting_value"] or "",
         "automatic_message_format": message_format_row["setting_value"] or "",
         "server_now_utc": datetime.now(timezone.utc),
         "updated_at": None,
@@ -117,6 +125,7 @@ def update_system_settings(
     server_offset = current["server_time_offset_hours"] if payload.server_time_offset_hours is None else payload.server_time_offset_hours
     sms_api_key = current["sms_api_key"] if payload.sms_api_key is None else payload.sms_api_key
     sms_sender_id = current["sms_sender_id"] if payload.sms_sender_id is None else payload.sms_sender_id
+    whatsapp_api_key = current["whatsapp_api_key"] if payload.whatsapp_api_key is None else payload.whatsapp_api_key
     automatic_message_format = current["automatic_message_format"] if payload.automatic_message_format is None else payload.automatic_message_format
     db.execute(
         text("UPDATE system_settings SET setting_value = :value WHERE setting_key = 'manual_file_entry'"),
@@ -135,6 +144,10 @@ def update_system_settings(
         {"value": sms_sender_id or "8809617612022"},
     )
     db.execute(
+        text("UPDATE system_settings SET setting_value = :value WHERE setting_key = 'whatsapp_api_key'"),
+        {"value": whatsapp_api_key or ""},
+    )
+    db.execute(
         text("UPDATE system_settings SET setting_value = :value WHERE setting_key = 'automatic_message_format'"),
         {"value": automatic_message_format or ""},
     )
@@ -144,6 +157,7 @@ def update_system_settings(
         "server_time_offset_hours": int(server_offset),
         "sms_api_key": sms_api_key or "",
         "sms_sender_id": sms_sender_id or "8809617612022",
+        "whatsapp_api_key": whatsapp_api_key or "",
         "automatic_message_format": automatic_message_format or "",
         "server_now_utc": datetime.now(timezone.utc),
         "updated_at": None,

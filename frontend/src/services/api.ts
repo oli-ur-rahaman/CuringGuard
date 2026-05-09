@@ -434,6 +434,7 @@ export const systemService = {
       server_time_offset_hours: number;
       sms_api_key: string;
       sms_sender_id: string;
+      whatsapp_api_key: string;
       automatic_message_format: string;
       server_now_utc: string;
       updated_at?: string | null;
@@ -444,6 +445,7 @@ export const systemService = {
     server_time_offset_hours?: number;
     sms_api_key?: string;
     sms_sender_id?: string;
+    whatsapp_api_key?: string;
     automatic_message_format?: string;
   }) => {
     const response = await api.patch('/system/settings', data);
@@ -452,6 +454,7 @@ export const systemService = {
       server_time_offset_hours: number;
       sms_api_key: string;
       sms_sender_id: string;
+      whatsapp_api_key: string;
       automatic_message_format: string;
       server_now_utc: string;
       updated_at?: string | null;
@@ -468,7 +471,7 @@ export const notificationService = {
     const response = await api.post(`/notifications/web/${notificationId}/read`);
     return response.data;
   },
-  sendCustomMessage: async (data: { contractor_id: number; message: string; structure_id?: number }) => {
+  sendCustomMessage: async (data: { contractor_id: number; message: string; structure_id?: number; channel?: 'sms' | 'whatsapp' }) => {
     const response = await api.post('/notifications/custom-message', data);
     return response.data;
   },
@@ -480,7 +483,7 @@ export const notificationService = {
     const response = await api.get(`/notifications/structures/${structureId}/draft`);
     return response.data;
   },
-  updateStructureSettings: async (structureId: number, data: { auto_sms_enabled?: boolean; auto_web_enabled?: boolean }) => {
+  updateStructureSettings: async (structureId: number, data: { auto_sms_enabled?: boolean; auto_web_enabled?: boolean; auto_whatsapp_enabled?: boolean }) => {
     const response = await api.patch(`/notifications/structures/${structureId}/settings`, data);
     return response.data;
   },

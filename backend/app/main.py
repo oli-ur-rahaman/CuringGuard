@@ -341,6 +341,16 @@ def ensure_runtime_schema():
                         VALUES ('sms_api_key', '', 'notifications', 'Green Heritage IT SMS API key')
                     """)
                 )
+            whatsapp_api_row = connection.execute(
+                text("SELECT id FROM system_settings WHERE setting_key = 'whatsapp_api_key' ORDER BY id ASC LIMIT 1")
+            ).mappings().first()
+            if not whatsapp_api_row:
+                connection.execute(
+                    text("""
+                        INSERT INTO system_settings (setting_key, setting_value, category, description)
+                        VALUES ('whatsapp_api_key', '', 'notifications', 'Wasender API key used for WhatsApp notifications')
+                    """)
+                )
             message_format_row = connection.execute(
                 text("SELECT id FROM system_settings WHERE setting_key = 'automatic_message_format' ORDER BY id ASC LIMIT 1")
             ).mappings().first()
@@ -360,6 +370,10 @@ def ensure_runtime_schema():
     if "schedule_slot_id" not in notification_dispatch_log_columns:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE notification_dispatch_logs ADD COLUMN schedule_slot_id INTEGER NULL"))
+
+    if "auto_whatsapp_enabled" not in structure_notification_setting_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE structure_notification_settings ADD COLUMN auto_whatsapp_enabled BOOLEAN NOT NULL DEFAULT FALSE"))
 
     if "structure_notification_settings" in table_names and "structure_notification_schedule_slots" in table_names:
         with engine.begin() as connection:

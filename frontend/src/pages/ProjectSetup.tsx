@@ -17,6 +17,7 @@ type NotificationSlot = {
 type StructureNotificationSettings = {
   auto_sms_enabled: boolean;
   auto_web_enabled: boolean;
+  auto_whatsapp_enabled: boolean;
   slots: NotificationSlot[];
 };
 
@@ -95,7 +96,6 @@ export default function ProjectSetup() {
   const [drawingsByStructure, setDrawingsByStructure] = useState<Record<number, any[]>>({});
   const [notificationSettingsByStructure, setNotificationSettingsByStructure] = useState<Record<number, StructureNotificationSettings>>({});
   const [selectedNotificationSlotByStructure, setSelectedNotificationSlotByStructure] = useState<Record<number, number | null>>({});
-  const [whatsAppUiEnabledByStructure, setWhatsAppUiEnabledByStructure] = useState<Record<number, boolean>>({});
   const [selectedStructureForUpload, setSelectedStructureForUpload] = useState<number | null>(null);
   const [uploadingStructureId, setUploadingStructureId] = useState<number | null>(null);
   const [deletingDrawingId, setDeletingDrawingId] = useState<number | null>(null);
@@ -161,6 +161,7 @@ export default function ProjectSetup() {
               {
                 auto_sms_enabled: !!setting.auto_sms_enabled,
                 auto_web_enabled: setting.auto_web_enabled !== false,
+                auto_whatsapp_enabled: !!setting.auto_whatsapp_enabled,
                 slots: Array.isArray(setting.slots) && setting.slots.length > 0
                   ? [...setting.slots].sort((a: any, b: any) => slotTimeToMinutes(a.notification_time) - slotTimeToMinutes(b.notification_time))
                   : [{ id: -1, notification_time: '10:30', is_enabled: true }],
@@ -515,11 +516,12 @@ export default function ProjectSetup() {
 
   const handleNotificationSettingChange = async (
     structureId: number,
-    patch: { auto_sms_enabled?: boolean; auto_web_enabled?: boolean }
+    patch: { auto_sms_enabled?: boolean; auto_web_enabled?: boolean; auto_whatsapp_enabled?: boolean }
   ) => {
     const current = notificationSettingsByStructure[structureId] || {
       auto_sms_enabled: false,
       auto_web_enabled: true,
+      auto_whatsapp_enabled: false,
       slots: [],
     };
     const optimistic = { ...current, ...patch };
@@ -532,6 +534,7 @@ export default function ProjectSetup() {
         [structureId]: {
           auto_sms_enabled: !!updated.auto_sms_enabled,
           auto_web_enabled: updated.auto_web_enabled !== false,
+          auto_whatsapp_enabled: !!updated.auto_whatsapp_enabled,
           slots: Array.isArray(updated.slots) ? [...updated.slots].sort((a: any, b: any) => slotTimeToMinutes(a.notification_time) - slotTimeToMinutes(b.notification_time)) : current.slots,
         },
       }));
@@ -548,7 +551,7 @@ export default function ProjectSetup() {
       setSavingNotificationStructureId(structureId);
       const created = await notificationService.createStructureSlot(structureId, { notification_time: notificationTime });
       setNotificationSettingsByStructure((prev) => {
-        const current = prev[structureId] || { auto_sms_enabled: false, auto_web_enabled: true, slots: [] };
+        const current = prev[structureId] || { auto_sms_enabled: false, auto_web_enabled: true, auto_whatsapp_enabled: false, slots: [] };
         const slots = [...current.slots, created].sort((a, b) => slotTimeToMinutes(a.notification_time) - slotTimeToMinutes(b.notification_time));
         return { ...prev, [structureId]: { ...current, slots } };
       });
@@ -731,8 +734,6 @@ export default function ProjectSetup() {
     const isSaving = savingNotificationStructureId === structureId;
     const selectedSlotId = selectedNotificationSlotByStructure[structureId] ?? settings.slots[0]?.id ?? null;
     const selectedSlot = settings.slots.find((slot) => slot.id === selectedSlotId) || null;
-    const whatsAppUiEnabled = !!whatsAppUiEnabledByStructure[structureId];
-
     return (
       <div className="mb-4 px-1 py-1">
         <div className="mb-3 flex items-center gap-2">
@@ -746,7 +747,7 @@ export default function ProjectSetup() {
             {[
               { label: 'SMS', active: settings.auto_sms_enabled, onClick: () => { void handleNotificationSettingChange(structureId, { auto_sms_enabled: !settings.auto_sms_enabled }); } },
               { label: 'WEB', active: settings.auto_web_enabled, onClick: () => { void handleNotificationSettingChange(structureId, { auto_web_enabled: !settings.auto_web_enabled }); } },
-              { label: "Whats'app", active: whatsAppUiEnabled, onClick: () => setWhatsAppUiEnabledByStructure((prev) => ({ ...prev, [structureId]: !prev[structureId] })) },
+              { label: "Whats'app", active: settings.auto_whatsapp_enabled, onClick: () => { void handleNotificationSettingChange(structureId, { auto_whatsapp_enabled: !settings.auto_whatsapp_enabled }); } },
             ].map((toggle) => (
               <div key={toggle.label} className="flex items-center gap-2.5">
                 <span className="text-[13px] font-black uppercase tracking-[0.12em] text-slate-600">{toggle.label}</span>

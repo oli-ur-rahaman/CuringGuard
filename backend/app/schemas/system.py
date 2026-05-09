@@ -8,6 +8,7 @@ class SystemSettingResponse(BaseModel):
     server_time_offset_hours: int
     sms_api_key: str
     sms_sender_id: str
+    whatsapp_api_key: str
     automatic_message_format: str
     server_now_utc: datetime
     updated_at: Optional[datetime] = None
@@ -21,4 +22,5 @@ class SystemSettingUpdate(BaseModel):
     server_time_offset_hours: Optional[int] = None
     sms_api_key: Optional[str] = None
     sms_sender_id: Optional[str] = None
+    whatsapp_api_key: Optional[str] = None
     automatic_message_format: Optional[str] = None

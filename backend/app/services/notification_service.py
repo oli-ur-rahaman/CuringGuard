@@ -13,6 +13,7 @@ from backend.app.models.notifications import (
 )
 from backend.app.models.users import User
 from backend.app.services.sms_service import SMSService
+from backend.app.services.whatsapp_service import WhatsAppService
 
 
 def get_system_setting_map(db: Session) -> dict[str, str]:
@@ -21,7 +22,7 @@ def get_system_setting_map(db: Session) -> dict[str, str]:
             """
             SELECT setting_key, setting_value
             FROM system_settings
-            WHERE setting_key IN ('server_time_offset_hours', 'sms_api_key', 'sms_sender_id', 'automatic_message_format')
+            WHERE setting_key IN ('server_time_offset_hours', 'sms_api_key', 'sms_sender_id', 'whatsapp_api_key', 'automatic_message_format')
             """
         )
     ).mappings().all()
@@ -56,6 +57,16 @@ def get_system_setting_map(db: Session) -> dict[str, str]:
             )
         )
         setting_map["sms_sender_id"] = "8809617612022"
+    if "whatsapp_api_key" not in setting_map:
+        db.execute(
+            text(
+                """
+                INSERT INTO system_settings (setting_key, setting_value, category, description)
+                VALUES ('whatsapp_api_key', '', 'notifications', 'Wasender API key for WhatsApp messages')
+                """
+            )
+        )
+        setting_map["whatsapp_api_key"] = ""
     if "automatic_message_format" not in setting_map:
         db.execute(
             text(
@@ -87,6 +98,15 @@ def is_sms_result_failed(sms_result) -> bool:
     return status_value in {"failed", "error"} or "wrong" in message_value or "error" in message_value
 
 
+def is_whatsapp_result_failed(whatsapp_result) -> bool:
+    if not isinstance(whatsapp_result, dict):
+        return True
+    if whatsapp_result.get("success") is True:
+        return False
+    message_value = str(whatsapp_result.get("message", "")).strip().lower()
+    return whatsapp_result.get("success") is False or "error" in message_value or "failed" in message_value
+
+
 def ensure_structure_notification_defaults(db: Session, structure_id: int):
     setting = db.query(StructureNotificationSetting).filter(StructureNotificationSetting.structure_id == structure_id).first()
     if not setting:
@@ -95,6 +115,7 @@ def ensure_structure_notification_defaults(db: Session, structure_id: int):
             notification_time="10:30",
             auto_sms_enabled=False,
             auto_web_enabled=True,
+            auto_whatsapp_enabled=False,
         )
         db.add(setting)
         db.flush()
@@ -337,6 +358,37 @@ def process_daily_structure_notifications(db: Session) -> None:
                                 contractor_id=row["contractor_id"],
                                 schedule_slot_id=slot.id,
                                 channel="sms",
+                                dispatch_type="scheduled",
+                                dispatch_date=today,
+                            )
+                        )
+
+            if structure_setting.auto_whatsapp_enabled and row["contractor_mobile"] and settings.get("whatsapp_api_key", "").strip():
+                existing_whatsapp = (
+                    db.query(NotificationDispatchLog)
+                    .filter(
+                        NotificationDispatchLog.structure_id == row["structure_id"],
+                        NotificationDispatchLog.contractor_id == row["contractor_id"],
+                        NotificationDispatchLog.schedule_slot_id == slot.id,
+                        NotificationDispatchLog.channel == "whatsapp",
+                        NotificationDispatchLog.dispatch_type == "scheduled",
+                        NotificationDispatchLog.dispatch_date == today,
+                    )
+                    .first()
+                )
+                if not existing_whatsapp:
+                    whatsapp_result = WhatsAppService.send_text_message(
+                        api_key=settings.get("whatsapp_api_key", ""),
+                        to_number=row["contractor_mobile"],
+                        message=message,
+                    )
+                    if not is_whatsapp_result_failed(whatsapp_result):
+                        db.add(
+                            NotificationDispatchLog(
+                                structure_id=row["structure_id"],
+                                contractor_id=row["contractor_id"],
+                                schedule_slot_id=slot.id,
+                                channel="whatsapp",
                                 dispatch_type="scheduled",
                                 dispatch_date=today,
                             )
