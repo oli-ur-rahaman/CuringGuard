@@ -553,7 +553,7 @@ export default function Plans() {
   const progressMediaChunksRef = useRef<Blob[]>([]);
   const progressDiscardCameraResultRef = useRef(false);
   const preferNativeProgressCapture = typeof window !== 'undefined'
-    && ((window.matchMedia?.('(pointer: coarse)').matches ?? false) || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || ''));
+    && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
   const activeTouchPointsRef = useRef<Map<number, Point>>(new Map());
   const touchLongPressTimeoutRef = useRef<number | null>(null);
   const restoredViewportKeyRef = useRef('');
@@ -4554,7 +4554,7 @@ export default function Plans() {
                   type="button"
                   onClick={() => { void toggleProgressVideoRecording(); }}
                   disabled={progressCameraLoading || !!progressCameraError}
-                  className={`inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50 ${progressRecording ? 'bg-red-600 hover:bg-red-500' : 'bg-white text-slate-900 hover:bg-white/90'}`}
+                  className={`inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-black disabled:cursor-not-allowed disabled:opacity-50 ${progressRecording ? 'bg-red-600 text-white hover:bg-red-500' : 'bg-white text-slate-900 hover:bg-white/90'}`}
                 >
                   {progressRecording ? <Loader2 className="h-4 w-4 animate-spin" /> : <Video className="h-4 w-4" />}
                   {progressRecording ? 'Stop Recording' : 'Start Recording'}

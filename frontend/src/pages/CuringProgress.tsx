@@ -165,7 +165,7 @@ export default function CuringProgress() {
   const mediaChunksRef = useRef<Blob[]>([]);
   const discardCameraResultRef = useRef(false);
   const preferNativeCapture = typeof window !== 'undefined'
-    && ((window.matchMedia?.('(pointer: coarse)').matches ?? false) || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || ''));
+    && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
 
   const loadRows = async () => {
     try {
@@ -862,7 +862,7 @@ export default function CuringProgress() {
                   type="button"
                   onClick={() => { void toggleVideoRecording(); }}
                   disabled={cameraLoading || !!cameraError}
-                  className={`inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50 ${recording ? 'bg-red-600 hover:bg-red-500' : 'bg-white text-slate-900 hover:bg-white/90'}`}
+                  className={`inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-black disabled:cursor-not-allowed disabled:opacity-50 ${recording ? 'bg-red-600 text-white hover:bg-red-500' : 'bg-white text-slate-900 hover:bg-white/90'}`}
                 >
                   {recording ? <Loader2 className="h-4 w-4 animate-spin" /> : <Video className="h-4 w-4" />}
                   {recording ? 'Stop Recording' : 'Start Recording'}

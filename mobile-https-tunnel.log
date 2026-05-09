@@ -10,3 +10,12 @@
 2026-05-09T12:00:58Z INF Settings: map[ha-connections:1 no-autoupdate:true protocol:quic url:http://127.0.0.1:5173]
 2026-05-09T12:00:58Z INF cloudflared will not automatically update on Windows systems.
 2026-05-09T12:00:58Z INF Generated Connector ID: e58dfc9f-ceb8-4ae7-82b3-4d7583f89f93
+2026-05-09T12:00:58Z INF Initial protocol quic
+2026-05-09T12:00:58Z INF ICMP proxy will use 192.168.0.103 as source for IPv4
+2026-05-09T12:00:58Z INF ICMP proxy will use fe80::57ad:1699:7a56:8dc1 in zone Wi-Fi as source for IPv6
+2026-05-09T12:00:58Z INF cloudflared does not support loading the system root certificate pool on Windows. Please use --origin-ca-pool <PATH> to specify the path to the certificate pool
+2026-05-09T12:00:58Z INF ICMP proxy will use 192.168.0.103 as source for IPv4
+2026-05-09T12:00:58Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveP256] connIndex=0 event=0 ip=198.41.200.43
+2026-05-09T12:00:58Z INF ICMP proxy will use fe80::57ad:1699:7a56:8dc1 in zone Wi-Fi as source for IPv6
+2026-05-09T12:00:58Z INF Starting metrics server on 127.0.0.1:20241/metrics
+2026-05-09T12:00:59Z INF Registered tunnel connection connIndex=0 connection=5a4c3b64-8bef-441e-9eb3-3d4d29b0dd22 event=0 ip=198.41.200.43 location=bom09 protocol=quic
