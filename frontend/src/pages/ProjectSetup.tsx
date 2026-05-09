@@ -837,26 +837,15 @@ export default function ProjectSetup() {
                 ref={(node) => { slotTimeInputRefs.current[structureId] = node; }}
                 type="time"
                 step={60}
-                className="sr-only"
                 value={selectedSlot.notification_time}
                 onChange={(event) => {
                   const value = event.target.value;
                   if (!value) return;
                   void handleSelectedSlotTimeChange(structureId, selectedSlot, value);
                 }}
+                className="rounded-2xl bg-slate-100 px-4 py-2.5 text-sm font-black text-slate-700 shadow-sm transition-colors hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-400"
+                aria-label={`Set notification time for structure ${structureId}`}
               />
-              <button
-                type="button"
-                onClick={() => {
-                  const input = slotTimeInputRefs.current[structureId];
-                  if (!input) return;
-                  if (typeof input.showPicker === 'function') input.showPicker();
-                  else input.click();
-                }}
-                className="rounded-2xl bg-slate-100 px-4 py-2.5 text-sm font-black text-slate-700 shadow-sm transition-colors hover:bg-slate-200"
-              >
-                {formatSlotTimeLabel(selectedSlot.notification_time)}
-              </button>
               <button
                 type="button"
                 onClick={() => { void handleToggleNotificationSlot(structureId, selectedSlot); }}

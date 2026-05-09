@@ -125,7 +125,7 @@ function GanttBar({ row }: { row: ActiveRow }) {
 
 export default function Dashboard() {
   const [loading, setLoading] = useState(true);
-  const [messageSaving, setMessageSaving] = useState(false);
+  const [messageSavingChannel, setMessageSavingChannel] = useState<'sms' | 'whatsapp' | null>(null);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [structures, setStructures] = useState<any[]>([]);
   const [selectedStructureId, setSelectedStructureId] = useState<number>(0);
@@ -215,7 +215,7 @@ export default function Dashboard() {
     }
 
     try {
-      setMessageSaving(true);
+      setMessageSavingChannel(channel);
       await notificationService.sendCustomMessage({
         contractor_id: draft.contractor_id,
         structure_id: draft.structure_id,
@@ -226,7 +226,7 @@ export default function Dashboard() {
     } catch (error: any) {
       alert(error.response?.data?.detail || 'Failed to send instruction.');
     } finally {
-      setMessageSaving(false);
+      setMessageSavingChannel(null);
     }
   };
 
@@ -526,18 +526,18 @@ export default function Dashboard() {
               <div className="flex flex-wrap justify-end gap-3">
                 <button
                   onClick={() => { void handleSendCustomMessage('sms'); }}
-                  disabled={messageSaving || !draft?.contractor_id}
+                  disabled={messageSavingChannel !== null || !draft?.contractor_id}
                   className="inline-flex h-[48px] items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 text-sm font-black text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {messageSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageSquareText className="h-4 w-4" />}
+                  {messageSavingChannel === 'sms' ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageSquareText className="h-4 w-4" />}
                   Send SMS
                 </button>
                 <button
                   onClick={() => { void handleSendCustomMessage('whatsapp'); }}
-                  disabled={messageSaving || !draft?.contractor_id}
+                  disabled={messageSavingChannel !== null || !draft?.contractor_id}
                   className="inline-flex h-[48px] items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 text-sm font-black text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {messageSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Phone className="h-4 w-4" />}
+                  {messageSavingChannel === 'whatsapp' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Phone className="h-4 w-4" />}
                   Send WhatsApp
                 </button>
               </div>
