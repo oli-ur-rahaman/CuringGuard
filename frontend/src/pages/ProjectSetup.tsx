@@ -2,9 +2,11 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Building2, PackageOpen, FolderGit2, 
-  ChevronRight, Plus, UserPlus, HardHat, ChevronDown, Loader2, Trash2, FileText, PenSquare, BellRing, X, UserMinus, Dices
+  ChevronRight, Plus, UserPlus, HardHat, ChevronDown, Loader2, Trash2, FileText, PenSquare, BellRing, X, UserMinus
 } from 'lucide-react';
 import { hierarchyService, userService, authService, curingService, notificationService } from '../services/api';
+import blueGoldenRhombus from '../assets/blue-golden-rhombus.svg';
+import blueDiamond from '../assets/blue-diamond.svg';
 
 type NotificationSlot = {
   id: number;
@@ -806,11 +808,22 @@ export default function ProjectSetup() {
                       setSelectedNotificationSlotByStructure((prev) => ({ ...prev, [structureId]: slot.id }));
                     }}
                     onPointerDown={(event) => handleNotificationSlotPointerDown(structureId, slot, event)}
-                    className={`absolute top-1/2 z-10 flex h-5 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-[6px] border ${slot.is_enabled ? 'border-blue-500 bg-blue-500 text-white' : 'border-slate-300 bg-white text-slate-400'} ${isSelected ? 'shadow-[0_0_0_4px_rgba(59,130,246,0.14),0_6px_16px_rgba(59,130,246,0.28)]' : 'shadow-[0_4px_10px_rgba(15,23,42,0.12)]'}`}
+                    className={`absolute top-1/2 z-10 flex h-5 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center ${isSelected ? 'shadow-[0_0_0_4px_rgba(59,130,246,0.14),0_6px_16px_rgba(59,130,246,0.28)]' : 'shadow-[0_4px_10px_rgba(15,23,42,0.12)]'}`}
                     style={{ left: `${leftPercent}%` }}
                     title={formatSlotTimeLabel(slot.notification_time)}
                   >
-                    <Dices className="h-3 w-3" strokeWidth={2.25} />
+                    <img
+                      src={blueGoldenRhombus}
+                      alt=""
+                      className={`h-3.5 w-[10px] rotate-90 select-none md:hidden ${slot.is_enabled ? 'opacity-100' : 'opacity-35 grayscale'}`}
+                      draggable={false}
+                    />
+                    <img
+                      src={blueDiamond}
+                      alt=""
+                      className={`hidden h-4 w-4 select-none md:block ${slot.is_enabled ? 'opacity-100' : 'opacity-35 grayscale'}`}
+                      draggable={false}
+                    />
                   </button>
                 );
               })}
