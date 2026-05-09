@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarRange, Camera, CheckCircle2, Clock3, Loader2, MessageSquareText, Phone, Plus, Presentation, Upload, Video, X } from 'lucide-react';
 import { authService, hierarchyService, notificationService, progressService, systemService } from '../services/api';
 import ElementPresentationOverlay from '../components/ElementPresentationOverlay';
+import MediaPreviewDialog from '../components/MediaPreviewDialog';
+import ProgressMediaList from '../components/ProgressMediaList';
 
 type GanttDay = {
   date: string;
@@ -136,6 +138,7 @@ export default function Dashboard() {
   const [progressSubmitting, setProgressSubmitting] = useState(false);
   const [progressMediaFiles, setProgressMediaFiles] = useState<ProgressMediaItem[]>([]);
   const [manualFileEntryEnabled, setManualFileEntryEnabled] = useState(true);
+  const [progressPreviewItem, setProgressPreviewItem] = useState<ProgressMediaItem | null>(null);
   const progressUploadInputRef = useRef<HTMLInputElement | null>(null);
   const progressPhotoInputRef = useRef<HTMLInputElement | null>(null);
   const progressVideoInputRef = useRef<HTMLInputElement | null>(null);
@@ -316,6 +319,10 @@ export default function Dashboard() {
     } finally {
       setProgressSubmitting(false);
     }
+  };
+
+  const removeProgressMediaFile = (index: number) => {
+    setProgressMediaFiles((current) => current.filter((_, currentIndex) => currentIndex !== index));
   };
 
   if (loading || !summary) {
@@ -687,15 +694,7 @@ export default function Dashboard() {
                   </button>
                 </div>
                 <p className="mt-2 text-xs font-medium text-slate-400">Multiple files allowed. Videos must be 2 minutes or shorter.</p>
-                {progressMediaFiles.length > 0 && (
-                  <div className="mt-3 space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                    {progressMediaFiles.map((item, index) => (
-                      <div key={`${item.file.name}-${index}`} className="text-sm font-bold text-slate-600">
-                        {item.file.name}
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <ProgressMediaList items={progressMediaFiles} onPreview={setProgressPreviewItem} onRemove={removeProgressMediaFile} />
               </div>
             </div>
 
@@ -720,6 +719,8 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+
+      <MediaPreviewDialog item={progressPreviewItem} onClose={() => setProgressPreviewItem(null)} />
     </div>
   );
 }

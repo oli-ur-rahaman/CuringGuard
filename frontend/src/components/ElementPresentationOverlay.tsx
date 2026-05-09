@@ -247,6 +247,7 @@ export default function ElementPresentationOverlay({ drawingElementId, open, onC
   const renderCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const timelineRailRef = useRef<HTMLDivElement | null>(null);
   const mediaOverlayRef = useRef<HTMLDivElement | null>(null);
+  const mediaStageRef = useRef<HTMLDivElement | null>(null);
   const [loading, setLoading] = useState(false);
   const [currentElementId, setCurrentElementId] = useState<string | null>(drawingElementId);
   const [payload, setPayload] = useState<PresentationPayload | null>(null);
@@ -266,9 +267,12 @@ export default function ElementPresentationOverlay({ drawingElementId, open, onC
   const [mediaRotation, setMediaRotation] = useState(0);
   const [mediaViewerOpen, setMediaViewerOpen] = useState(false);
   const [isMediaFullscreen, setIsMediaFullscreen] = useState(false);
+  const [mediaPosition, setMediaPosition] = useState({ x: 0, y: 0 });
+  const [isMediaPanning, setIsMediaPanning] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const [isCompactLayout, setIsCompactLayout] = useState(() => (typeof window !== 'undefined' ? window.innerWidth < 1024 : false));
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
+  const [mediaPanStart, setMediaPanStart] = useState({ x: 0, y: 0 });
   const [mouseViewport, setMouseViewport] = useState({ x: 0, y: 0, visible: false });
   const objectUrlsRef = useRef<string[]>([]);
   const activeTouchPointsRef = useRef<Map<number, Point>>(new Map());
@@ -277,6 +281,13 @@ export default function ElementPresentationOverlay({ drawingElementId, open, onC
     startDistance: number;
     startScale: number;
     contentPoint: Point;
+  }>(null);
+  const mediaTouchNavRef = useRef<null | {
+    pointerIds: [number, number];
+    startDistance: number;
+    startZoom: number;
+    startPosition: Point;
+    startMidViewport: Point;
   }>(null);
 
   const timelineDays = payload?.timeline_days || [];
@@ -323,6 +334,7 @@ export default function ElementPresentationOverlay({ drawingElementId, open, onC
   const fitMedia = () => {
     setMediaZoom(1);
     setMediaRotation(0);
+    setMediaPosition({ x: 0, y: 0 });
   };
 
   const toggleMediaFullscreen = async () => {
@@ -352,6 +364,64 @@ export default function ElementPresentationOverlay({ drawingElementId, open, onC
     setPosition({
       x: targetX - pageX * clampedScale,
       y: targetY - pageY * clampedScale,
+    });
+  };
+
+  const executeMediaZoom = (nextZoom: number, anchorX?: number, anchorY?: number) => {
+    const stage = mediaStageRef.current;
+    if (!stage) {
+      setMediaZoom(clamp(nextZoom, 0.5, 6));
+      return;
+    }
+    const clampedZoom = clamp(nextZoom, 0.5, 6);
+    const rect = stage.getBoundingClientRect();
+    const centerX = rect.width / 2;
+    const centerY = rect.height / 2;
+    const targetX = anchorX ?? centerX;
+    const targetY = anchorY ?? centerY;
+    const localX = ((targetX - centerX) - mediaPosition.x) / mediaZoom;
+    const localY = ((targetY - centerY) - mediaPosition.y) / mediaZoom;
+    setMediaZoom(clampedZoom);
+    setMediaPosition({
+      x: (targetX - centerX) - localX * clampedZoom,
+      y: (targetY - centerY) - localY * clampedZoom,
+    });
+  };
+
+  const startMediaTouchNavigation = () => {
+    const stage = mediaStageRef.current;
+    if (!stage) return;
+    const touchPoints = Array.from(activeTouchPointsRef.current.entries());
+    if (touchPoints.length < 2) return;
+    const [, first] = touchPoints[0];
+    const [, second] = touchPoints[1];
+    const rect = stage.getBoundingClientRect();
+    const midClient = midpoint(first, second);
+    mediaTouchNavRef.current = {
+      pointerIds: [touchPoints[0][0], touchPoints[1][0]],
+      startDistance: Math.max(pointDistance(first, second), 1),
+      startZoom: mediaZoom,
+      startPosition: mediaPosition,
+      startMidViewport: { x: midClient.x - rect.left, y: midClient.y - rect.top },
+    };
+  };
+
+  const updateMediaTouchNavigation = () => {
+    const stage = mediaStageRef.current;
+    const gesture = mediaTouchNavRef.current;
+    if (!stage || !gesture) return;
+    const first = activeTouchPointsRef.current.get(gesture.pointerIds[0]);
+    const second = activeTouchPointsRef.current.get(gesture.pointerIds[1]);
+    if (!first || !second) return;
+    const rect = stage.getBoundingClientRect();
+    const midClient = midpoint(first, second);
+    const midViewport = { x: midClient.x - rect.left, y: midClient.y - rect.top };
+    const distance = Math.max(pointDistance(first, second), 1);
+    const nextZoom = clamp(gesture.startZoom * (distance / gesture.startDistance), 0.5, 6);
+    setMediaZoom(nextZoom);
+    setMediaPosition({
+      x: gesture.startPosition.x + (midViewport.x - gesture.startMidViewport.x),
+      y: gesture.startPosition.y + (midViewport.y - gesture.startMidViewport.y),
     });
   };
 
@@ -1012,31 +1082,102 @@ export default function ElementPresentationOverlay({ drawingElementId, open, onC
       {mediaViewerOpen && currentMedia && (
         <div className="fixed inset-0 z-[340] bg-black/92" ref={mediaOverlayRef}>
           <div className="flex h-full w-full flex-col">
-            <div className="flex flex-wrap items-center justify-end gap-2 px-3 py-3 sm:gap-3 sm:px-6 sm:py-5">
-              <button type="button" onClick={() => setMediaZoom((current) => clamp(current - 0.2, 0.4, 4))} className="rounded-xl bg-white/10 p-2 text-white hover:bg-white/15 sm:p-2.5"><ZoomOut className="h-4 w-4" /></button>
-              <button type="button" onClick={() => setMediaZoom((current) => clamp(current + 0.2, 0.4, 4))} className="rounded-xl bg-white/10 p-2 text-white hover:bg-white/15 sm:p-2.5"><ZoomIn className="h-4 w-4" /></button>
+            <div className="sticky top-0 z-20 flex flex-wrap items-center justify-end gap-2 border-b border-white/10 bg-black/75 px-3 py-3 backdrop-blur sm:gap-3 sm:px-6 sm:py-5">
+              <button type="button" onClick={() => executeMediaZoom(mediaZoom - 0.2)} className="rounded-xl bg-white/10 p-2 text-white hover:bg-white/15 sm:p-2.5"><ZoomOut className="h-4 w-4" /></button>
+              <button type="button" onClick={() => executeMediaZoom(mediaZoom + 0.2)} className="rounded-xl bg-white/10 p-2 text-white hover:bg-white/15 sm:p-2.5"><ZoomIn className="h-4 w-4" /></button>
               <button type="button" onClick={() => setMediaRotation((current) => current - 90)} className="rounded-xl bg-white/10 p-2 text-white hover:bg-white/15 sm:p-2.5"><RotateCcw className="h-4 w-4" /></button>
               <button type="button" onClick={() => setMediaRotation((current) => current + 90)} className="rounded-xl bg-white/10 p-2 text-white hover:bg-white/15 sm:p-2.5"><RotateCw className="h-4 w-4" /></button>
               <button type="button" onClick={() => { void toggleMediaFullscreen(); }} className="rounded-xl bg-white/10 p-2 text-white hover:bg-white/15 sm:p-2.5" title={isMediaFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}>
                 {isMediaFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
               </button>
+              <button type="button" onClick={fitMedia} className="rounded-xl bg-white/10 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-white hover:bg-white/15 sm:px-4 sm:text-sm">Fit</button>
               <button type="button" onClick={() => setMediaViewerOpen(false)} className="rounded-xl bg-white/10 p-2 text-white hover:bg-white/15 sm:p-2.5"><X className="h-4 w-4" /></button>
             </div>
-            <div className="relative flex flex-1 items-center justify-center px-3 pb-3 sm:px-8 sm:pb-8">
+            <div
+              ref={mediaStageRef}
+              className="relative flex flex-1 items-center justify-center overflow-hidden px-2 pb-2 pt-2 sm:px-6 sm:pb-6 sm:pt-4"
+              style={{ touchAction: currentMedia.file_type === 'image' ? 'none' : 'auto' }}
+              onWheel={(event) => {
+                if (currentMedia.file_type !== 'image') return;
+                event.preventDefault();
+                const rect = mediaStageRef.current?.getBoundingClientRect();
+                if (!rect) return;
+                const zoomFactor = event.deltaY < 0 ? 1.12 : 0.88;
+                executeMediaZoom(mediaZoom * zoomFactor, event.clientX - rect.left, event.clientY - rect.top);
+              }}
+              onMouseDown={(event) => {
+                if (currentMedia.file_type !== 'image' || event.button !== 1) return;
+                event.preventDefault();
+                setIsMediaPanning(true);
+                setMediaPanStart({ x: event.clientX - mediaPosition.x, y: event.clientY - mediaPosition.y });
+              }}
+              onMouseMove={(event) => {
+                if (!isMediaPanning || currentMedia.file_type !== 'image') return;
+                event.preventDefault();
+                setMediaPosition({ x: event.clientX - mediaPanStart.x, y: event.clientY - mediaPanStart.y });
+              }}
+              onMouseUp={() => setIsMediaPanning(false)}
+              onMouseLeave={() => setIsMediaPanning(false)}
+              onTouchStart={(event) => {
+                if (currentMedia.file_type !== 'image') return;
+                for (const touch of Array.from(event.changedTouches)) {
+                  activeTouchPointsRef.current.set(touch.identifier, { x: touch.clientX, y: touch.clientY });
+                }
+                if (activeTouchPointsRef.current.size >= 2) {
+                  startMediaTouchNavigation();
+                }
+              }}
+              onTouchMove={(event) => {
+                if (currentMedia.file_type !== 'image') return;
+                for (const touch of Array.from(event.changedTouches)) {
+                  activeTouchPointsRef.current.set(touch.identifier, { x: touch.clientX, y: touch.clientY });
+                }
+                if (mediaTouchNavRef.current) {
+                  updateMediaTouchNavigation();
+                } else if (activeTouchPointsRef.current.size >= 2) {
+                  startMediaTouchNavigation();
+                  updateMediaTouchNavigation();
+                }
+              }}
+              onTouchEnd={(event) => {
+                if (currentMedia.file_type !== 'image') return;
+                for (const touch of Array.from(event.changedTouches)) {
+                  activeTouchPointsRef.current.delete(touch.identifier);
+                }
+                if (activeTouchPointsRef.current.size >= 2) {
+                  startMediaTouchNavigation();
+                  updateMediaTouchNavigation();
+                } else {
+                  mediaTouchNavRef.current = null;
+                }
+              }}
+              onTouchCancel={(event) => {
+                if (currentMedia.file_type !== 'image') return;
+                for (const touch of Array.from(event.changedTouches)) {
+                  activeTouchPointsRef.current.delete(touch.identifier);
+                }
+                mediaTouchNavRef.current = null;
+              }}
+            >
               {currentMedia.file_type === 'video' ? (
                 <video
                   src={currentMediaUrl || undefined}
                   controls
-                  className="max-h-full max-w-full rounded-2xl bg-black shadow-2xl"
+                  className="max-h-full max-w-full rounded-2xl bg-black object-contain shadow-2xl"
                   style={{ transform: `scale(${mediaZoom}) rotate(${mediaRotation}deg)` }}
                 />
               ) : (
-                <img
-                  src={currentMediaUrl || undefined}
-                  alt="Progress evidence"
-                  className="max-h-full max-w-full rounded-2xl object-contain shadow-2xl"
-                  style={{ transform: `scale(${mediaZoom}) rotate(${mediaRotation}deg)` }}
-                />
+                <div
+                  className={`absolute left-1/2 top-1/2 ${isMediaPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
+                  style={{ transform: `translate(-50%, -50%) translate(${mediaPosition.x}px, ${mediaPosition.y}px) scale(${mediaZoom}) rotate(${mediaRotation}deg)` }}
+                >
+                  <img
+                    src={currentMediaUrl || undefined}
+                    alt="Progress evidence"
+                    className="max-h-[calc(100vh-96px)] max-w-[calc(100vw-16px)] rounded-2xl object-contain shadow-2xl sm:max-h-[calc(100vh-120px)] sm:max-w-[calc(100vw-48px)]"
+                    draggable={false}
+                  />
+                </div>
               )}
             </div>
           </div>

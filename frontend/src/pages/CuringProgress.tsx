@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { CalendarRange, Camera, Loader2, Plus, Presentation, Upload, Video, X } from 'lucide-react';
 import { progressService, systemService } from '../services/api';
 import ElementPresentationOverlay from '../components/ElementPresentationOverlay';
+import MediaPreviewDialog from '../components/MediaPreviewDialog';
+import ProgressMediaList from '../components/ProgressMediaList';
 
 type GanttDay = {
   date: string;
@@ -31,7 +33,7 @@ type ProgressStructureGroup = {
 
 type ProgressMediaItem = {
   file: File;
-  source: 'manual' | 'camera-photo' | 'camera-video';
+  source: string;
   capturedAt?: string | null;
   latitude?: number | null;
   longitude?: number | null;
@@ -153,12 +155,17 @@ export default function CuringProgress() {
   const [cameraLoading, setCameraLoading] = useState(false);
   const [recording, setRecording] = useState(false);
   const [presentationElementId, setPresentationElementId] = useState<string | null>(null);
+  const [previewItem, setPreviewItem] = useState<ProgressMediaItem | null>(null);
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
+  const nativePhotoInputRef = useRef<HTMLInputElement | null>(null);
+  const nativeVideoInputRef = useRef<HTMLInputElement | null>(null);
   const liveVideoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaChunksRef = useRef<Blob[]>([]);
   const discardCameraResultRef = useRef(false);
+  const preferNativeCapture = typeof window !== 'undefined'
+    && ((window.matchMedia?.('(pointer: coarse)').matches ?? false) || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || ''));
 
   const loadRows = async () => {
     try {
@@ -401,9 +408,36 @@ export default function CuringProgress() {
     }
   };
 
+  const appendCapturedFiles = async (files: FileList | null, source: 'camera-photo' | 'camera-video') => {
+    if (!files || files.length === 0) return;
+    const incoming = Array.from(files);
+    try {
+      await validateMediaFiles(incoming);
+      const captureContext = await resolveMandatoryCaptureContext();
+      if (!captureContext) return;
+      setMediaFiles((current) => [
+        ...current,
+        ...incoming.map((file) => ({
+          file,
+          source,
+          capturedAt: captureContext.capturedAt,
+          latitude: captureContext.latitude,
+          longitude: captureContext.longitude,
+        })),
+      ]);
+    } catch (error: any) {
+      alert(error.message || 'Invalid media file.');
+    }
+  };
+
   const openCameraCapture = async (mode: 'photo' | 'video') => {
     const locationAllowed = await ensureLocationPermissionForCapture();
     if (!locationAllowed) return;
+    if (preferNativeCapture) {
+      if (mode === 'photo') nativePhotoInputRef.current?.click();
+      else nativeVideoInputRef.current?.click();
+      return;
+    }
     const cameraAllowed = await ensureCameraPermissionForCapture(mode);
     if (!cameraAllowed) return;
     discardCameraResultRef.current = false;
@@ -550,6 +584,10 @@ export default function CuringProgress() {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const removeMediaFile = (index: number) => {
+    setMediaFiles((current) => current.filter((_, currentIndex) => currentIndex !== index));
   };
 
   return (
@@ -708,6 +746,22 @@ export default function CuringProgress() {
                       </button>
                     </>
                   )}
+                  <input
+                    ref={nativePhotoInputRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="hidden"
+                    onChange={(e) => { void appendCapturedFiles(e.target.files, 'camera-photo'); e.currentTarget.value = ''; }}
+                  />
+                  <input
+                    ref={nativeVideoInputRef}
+                    type="file"
+                    accept="video/*"
+                    capture="environment"
+                    className="hidden"
+                    onChange={(e) => { void appendCapturedFiles(e.target.files, 'camera-video'); e.currentTarget.value = ''; }}
+                  />
                   <button
                     type="button"
                     onClick={() => { void openCameraCapture('photo'); }}
@@ -726,16 +780,7 @@ export default function CuringProgress() {
                   </button>
                 </div>
                 <p className="mt-2 text-xs font-medium text-slate-400">Multiple files allowed. Videos must be 2 minutes or shorter.</p>
-                {mediaFiles.length > 0 && (
-                  <div className="mt-3 space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                    {mediaFiles.map((item, index) => (
-                      <div key={`${item.file.name}-${index}`} className="text-sm font-bold text-slate-600">
-                        {item.file.name}
-                        {item.capturedAt && <span className="ml-2 text-xs font-semibold text-slate-400">captured {new Date(item.capturedAt).toLocaleString()}</span>}
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <ProgressMediaList items={mediaFiles} onPreview={setPreviewItem} onRemove={removeMediaFile} />
               </div>
             </div>
 
@@ -762,24 +807,24 @@ export default function CuringProgress() {
       )}
 
       {cameraModalOpen && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40 px-4">
-          <div className="max-h-[92dvh] w-full max-w-3xl overflow-y-auto rounded-[28px] border border-slate-200 bg-white p-4 shadow-2xl sm:p-6">
-            <div className="mb-5 flex items-start justify-between">
+        <div className="fixed inset-0 z-[110] bg-black">
+          <div className="flex h-full w-full flex-col bg-slate-950 text-white">
+            <div className="flex items-start justify-between gap-4 border-b border-white/10 px-4 py-3 sm:px-6">
               <div>
-                <h3 className="text-xl font-black tracking-tight text-slate-900 sm:text-2xl">
+                <h3 className="text-xl font-black tracking-tight text-white sm:text-2xl">
                   {cameraMode === 'photo' ? 'Take Photo' : 'Record Video'}
                 </h3>
-                <p className="mt-1 text-xs font-medium text-slate-500 sm:text-sm">
-                  Camera capture opens directly here and saves into today&apos;s progress evidence.
+                <p className="mt-1 text-xs font-medium text-white/65 sm:text-sm">
+                  Full-screen capture for desktop and tablet. Mobile devices use the native camera when available.
                 </p>
               </div>
-              <button onClick={closeCameraModal} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+              <button onClick={closeCameraModal} className="rounded-xl p-2 text-white/70 hover:bg-white/10 hover:text-white">
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-slate-950">
-              <div className="relative aspect-video w-full">
+            <div className="relative min-h-0 flex-1 overflow-hidden bg-black">
+              <div className="absolute inset-0">
                 <video ref={liveVideoRef} autoPlay playsInline muted={cameraMode === 'photo'} className="h-full w-full object-cover" />
                 {cameraLoading && (
                   <div className="absolute inset-0 flex items-center justify-center bg-slate-950/60">
@@ -794,11 +839,11 @@ export default function CuringProgress() {
               </div>
             </div>
 
-            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+            <div className="flex flex-col-reverse gap-3 border-t border-white/10 bg-slate-950/90 px-4 py-4 sm:flex-row sm:justify-end sm:px-6">
               <button
                 type="button"
                 onClick={closeCameraModal}
-                className="rounded-2xl border border-slate-300 px-4 py-2.5 text-sm font-black text-slate-600 hover:bg-slate-50"
+                className="rounded-2xl border border-white/20 px-4 py-3 text-sm font-black text-white/80 hover:bg-white/10"
               >
                 Cancel
               </button>
@@ -807,7 +852,7 @@ export default function CuringProgress() {
                   type="button"
                   onClick={() => { void capturePhoto(); }}
                   disabled={cameraLoading || !!cameraError}
-                  className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-2.5 text-sm font-black text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white px-5 py-3 text-sm font-black text-slate-900 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Camera className="h-4 w-4" />
                   Capture Photo
@@ -817,7 +862,7 @@ export default function CuringProgress() {
                   type="button"
                   onClick={() => { void toggleVideoRecording(); }}
                   disabled={cameraLoading || !!cameraError}
-                  className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50 ${recording ? 'bg-red-600 hover:bg-red-500' : 'bg-slate-900 hover:bg-slate-800'}`}
+                  className={`inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50 ${recording ? 'bg-red-600 hover:bg-red-500' : 'bg-white text-slate-900 hover:bg-white/90'}`}
                 >
                   {recording ? <Loader2 className="h-4 w-4 animate-spin" /> : <Video className="h-4 w-4" />}
                   {recording ? 'Stop Recording' : 'Start Recording'}
@@ -827,6 +872,8 @@ export default function CuringProgress() {
           </div>
         </div>
       )}
+
+      <MediaPreviewDialog item={previewItem} onClose={() => setPreviewItem(null)} />
 
       <ElementPresentationOverlay
         open={!!presentationElementId}

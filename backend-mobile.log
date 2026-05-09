@@ -1,0 +1,374 @@
+INFO:     Will watch for changes in these directories: ['D:\\CuringGuard']
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [10568] using WatchFiles
+INFO:     Started server process [6924]
+INFO:     Waiting for application startup.
+INFO:apscheduler.scheduler:Adding job tentatively -- it will be properly scheduled when the scheduler starts
+INFO:apscheduler.scheduler:Adding job tentatively -- it will be properly scheduled when the scheduler starts
+INFO:apscheduler.scheduler:Added job "check_curing_status_and_notify" to job store "default"
+INFO:apscheduler.scheduler:Added job "process_structure_notifications_job" to job store "default"
+INFO:apscheduler.scheduler:Scheduler started
+INFO:backend.app.services.cron_service:Background Cron Scheduler started. Tasks scheduled for 8:00 AM daily and structure notifications every minute.
+INFO:     Application startup complete.
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-09 18:01:00 +06)" (scheduled at 2026-05-09 18:01:00+06:00)
+INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
+INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-09 18:02:00 +06)" executed successfully
+INFO:     127.0.0.1:7970 - "POST /api/auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:9397 - "GET /api/progress/dashboard-summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:9398 - "GET /api/notifications/web?unread_only=false HTTP/1.1" 200 OK
+INFO:     127.0.0.1:9400 - "GET /api/progress/dashboard-summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:3737 - "GET /api/notifications/web?unread_only=false HTTP/1.1" 200 OK
+INFO:     127.0.0.1:3736 - "GET /api/system/settings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:9832 - "GET /api/hierarchy/monitors/6/projects HTTP/1.1" 200 OK
+INFO:     127.0.0.1:9831 - "GET /api/system/settings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:3205 - "GET /api/hierarchy/projects/2/packages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:3206 - "GET /api/hierarchy/projects/3/packages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:3207 - "GET /api/hierarchy/monitors/6/projects HTTP/1.1" 200 OK
+INFO:     127.0.0.1:12491 - "GET /api/hierarchy/projects/2/packages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:12562 - "GET /api/hierarchy/packages/5/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:12563 - "GET /api/hierarchy/packages/2/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:12565 - "GET /api/hierarchy/packages/4/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:12564 - "GET /api/hierarchy/packages/3/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:12561 - "GET /api/hierarchy/projects/3/packages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:6233 - "GET /api/hierarchy/packages/5/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:6234 - "GET /api/hierarchy/packages/2/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:6235 - "GET /api/hierarchy/packages/3/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:6236 - "GET /api/hierarchy/packages/4/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:2893 - "GET /api/hierarchy/monitors/6/projects HTTP/1.1" 200 OK
+INFO:     127.0.0.1:4386 - "GET /api/users/?role=contractor HTTP/1.1" 200 OK
+INFO:     127.0.0.1:4387 - "GET /api/hierarchy/projects/3/packages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:4388 - "GET /api/hierarchy/packages/2/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:9220 - "GET /api/hierarchy/projects/3/packages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:9221 - "GET /api/hierarchy/packages/2/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:14598 - "GET /api/notifications/structure-settings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:8456 - "GET /api/hierarchy/structures/2/drawings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:8457 - "GET /api/hierarchy/structures/3/drawings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:6373 - "GET /api/hierarchy/structures/2/drawings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:6375 - "GET /api/hierarchy/projects/2/packages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:6376 - "GET /api/hierarchy/projects/3/packages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:6374 - "GET /api/hierarchy/structures/3/drawings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:5916 - "GET /api/hierarchy/packages/5/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:5919 - "GET /api/hierarchy/packages/4/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:5917 - "GET /api/hierarchy/packages/2/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:5918 - "GET /api/hierarchy/packages/3/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:11947 - "GET /api/hierarchy/structures/4/drawings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:11922 - "GET /api/hierarchy/structures/2/drawings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:11923 - "GET /api/hierarchy/structures/3/drawings HTTP/1.1" 200 OK
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-09 18:03:00 +06)" (scheduled at 2026-05-09 18:02:00+06:00)
+INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
+INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-09 18:03:00 +06)" executed successfully
+INFO:     103.154.49.32:0 - "POST /api/auth/login HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/notifications/web?unread_only=false HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/progress/dashboard-summary HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/notifications/web?unread_only=false HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/progress/dashboard-summary HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/system/settings HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/system/settings HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/monitors/6/projects HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/monitors/6/projects HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/projects/2/packages HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/projects/3/packages HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/projects/2/packages HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/projects/3/packages HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/packages/5/structures HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/packages/3/structures HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/packages/4/structures HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/packages/2/structures HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/packages/2/structures HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/packages/5/structures HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/packages/4/structures HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/packages/3/structures HTTP/1.1" 200 OK
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-09 18:04:00 +06)" (scheduled at 2026-05-09 18:03:00+06:00)
+INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
+INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-09 18:04:00 +06)" executed successfully
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-09 18:05:00 +06)" (scheduled at 2026-05-09 18:04:00+06:00)
+INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
+INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-09 18:05:00 +06)" executed successfully
+INFO:     103.154.49.32:0 - "POST /api/progress/entries HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/progress/dashboard-summary HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/system/settings HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/monitors/6/projects HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/projects/3/packages HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/projects/2/packages HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/packages/5/structures HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/packages/2/structures HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/packages/4/structures HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/packages/3/structures HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/progress/presentation/1bb3df8f-345e-4f74-a92e-8576a6632620 HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/drawings/7/annotations?page_id=pdf:6 HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/drawings/7/file HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/progress/media/22/file HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/progress/media/23/file HTTP/1.1" 200 OK
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-09 18:06:00 +06)" (scheduled at 2026-05-09 18:05:00+06:00)
+INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
+INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-09 18:06:00 +06)" executed successfully
+INFO:     127.0.0.1:1128 - "GET /api/progress/dashboard-summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:7883 - "GET /api/progress/dashboard-summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:9702 - "GET /api/system/settings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:9703 - "GET /api/system/settings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:2538 - "GET /api/hierarchy/monitors/6/projects HTTP/1.1" 200 OK
+INFO:     127.0.0.1:15000 - "GET /api/hierarchy/monitors/6/projects HTTP/1.1" 200 OK
+INFO:     127.0.0.1:1027 - "GET /api/hierarchy/projects/2/packages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:1028 - "GET /api/hierarchy/projects/3/packages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:9477 - "GET /api/hierarchy/packages/2/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:9476 - "GET /api/hierarchy/packages/5/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:9475 - "GET /api/hierarchy/projects/3/packages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:9474 - "GET /api/hierarchy/projects/2/packages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:9478 - "GET /api/hierarchy/packages/3/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:9479 - "GET /api/hierarchy/packages/4/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:5093 - "GET /api/hierarchy/packages/4/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:5092 - "GET /api/hierarchy/packages/2/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:5094 - "GET /api/hierarchy/packages/3/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:5091 - "GET /api/hierarchy/packages/5/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:4214 - "GET /api/progress/presentation/1bb3df8f-345e-4f74-a92e-8576a6632620 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:10800 - "GET /api/hierarchy/drawings/7/annotations?page_id=pdf:6 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:13645 - "GET /api/progress/media/22/file HTTP/1.1" 200 OK
+INFO:     127.0.0.1:7559 - "GET /api/progress/media/23/file HTTP/1.1" 200 OK
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-09 18:07:00 +06)" (scheduled at 2026-05-09 18:06:00+06:00)
+INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
+INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-09 18:07:00 +06)" executed successfully
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-09 18:08:00 +06)" (scheduled at 2026-05-09 18:07:00+06:00)
+INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
+INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-09 18:08:00 +06)" executed successfully
+INFO:     127.0.0.1:14746 - "GET /api/hierarchy/monitors/6/projects HTTP/1.1" 200 OK
+INFO:     127.0.0.1:2317 - "GET /api/hierarchy/drawings/7/pages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:2316 - "GET /api/progress/rows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:2318 - "GET /api/hierarchy/monitors/6/projects HTTP/1.1" 200 OK
+INFO:     127.0.0.1:2315 - "GET /api/library/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:5467 - "GET /api/hierarchy/projects/3/packages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:3356 - "GET /api/hierarchy/projects/2/packages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:8171 - "GET /api/hierarchy/drawings/7/pages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:8172 - "GET /api/progress/rows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:2188 - "GET /api/library/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:6198 - "GET /api/hierarchy/projects/3/packages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:9764 - "GET /api/hierarchy/projects/2/packages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:4963 - "GET /api/hierarchy/packages/5/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:10035 - "GET /api/hierarchy/packages/2/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:10453 - "GET /api/hierarchy/packages/3/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:14051 - "GET /api/hierarchy/packages/4/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:7897 - "GET /api/hierarchy/packages/5/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:7896 - "GET /api/hierarchy/drawings/7/annotations?page_id=pdf:6 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:4817 - "GET /api/hierarchy/packages/2/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:1936 - "GET /api/hierarchy/packages/3/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:12910 - "GET /api/hierarchy/drawings/7/annotations?page_id=pdf:6 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:12909 - "GET /api/hierarchy/packages/4/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:11298 - "GET /api/hierarchy/structures/4/drawings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:14486 - "GET /api/hierarchy/structures/2/drawings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:14487 - "GET /api/hierarchy/structures/3/drawings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:11324 - "GET /api/hierarchy/structures/4/drawings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:1207 - "GET /api/hierarchy/structures/2/drawings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:3823 - "GET /api/hierarchy/structures/3/drawings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:3160 - "GET /api/system/settings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:6087 - "GET /api/hierarchy/monitors/6/projects HTTP/1.1" 200 OK
+INFO:     127.0.0.1:3921 - "GET /api/hierarchy/projects/3/packages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:3922 - "GET /api/hierarchy/packages/2/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:3920 - "GET /api/users/?role=contractor HTTP/1.1" 200 OK
+INFO:     127.0.0.1:6955 - "GET /api/hierarchy/projects/3/packages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:6957 - "GET /api/hierarchy/structures/2/drawings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:6958 - "GET /api/hierarchy/structures/3/drawings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:6956 - "GET /api/hierarchy/packages/2/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:6959 - "GET /api/notifications/structure-settings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:1243 - "GET /api/hierarchy/structures/2/drawings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:1244 - "GET /api/hierarchy/structures/3/drawings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:11347 - "GET /api/hierarchy/projects/3/packages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:11346 - "GET /api/hierarchy/projects/2/packages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:1207 - "GET /api/hierarchy/packages/5/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:1209 - "GET /api/hierarchy/packages/3/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:1210 - "GET /api/hierarchy/packages/4/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:1208 - "GET /api/hierarchy/packages/2/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:12341 - "GET /api/hierarchy/structures/4/drawings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:5846 - "GET /api/hierarchy/structures/2/drawings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:5847 - "GET /api/hierarchy/structures/3/drawings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:13613 - "GET /api/hierarchy/monitors/6/projects HTTP/1.1" 200 OK
+INFO:     127.0.0.1:8891 - "GET /api/library/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:8894 - "GET /api/hierarchy/monitors/6/projects HTTP/1.1" 200 OK
+INFO:     127.0.0.1:8892 - "GET /api/progress/rows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:8893 - "GET /api/hierarchy/drawings/7/pages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:14266 - "GET /api/hierarchy/projects/3/packages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:14265 - "GET /api/hierarchy/projects/2/packages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:2414 - "GET /api/library/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:1647 - "GET /api/hierarchy/drawings/7/pages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:14010 - "GET /api/progress/rows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:6034 - "GET /api/hierarchy/projects/2/packages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:6035 - "GET /api/hierarchy/projects/3/packages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:5471 - "GET /api/hierarchy/packages/5/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:14678 - "GET /api/hierarchy/packages/2/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:1116 - "GET /api/hierarchy/packages/3/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:1117 - "GET /api/hierarchy/packages/4/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:14827 - "GET /api/hierarchy/packages/5/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:14509 - "GET /api/hierarchy/drawings/7/annotations?page_id=pdf:6 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:5756 - "GET /api/hierarchy/packages/2/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:12731 - "GET /api/hierarchy/packages/3/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:2702 - "GET /api/hierarchy/structures/4/drawings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:2701 - "GET /api/hierarchy/packages/4/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:9796 - "GET /api/hierarchy/structures/3/drawings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:9795 - "GET /api/hierarchy/structures/2/drawings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:2990 - "GET /api/hierarchy/drawings/7/annotations?page_id=pdf:6 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:6777 - "GET /api/hierarchy/structures/4/drawings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:7644 - "GET /api/hierarchy/structures/2/drawings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:7643 - "GET /api/hierarchy/structures/3/drawings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:3980 - "GET /api/hierarchy/monitors/6/projects HTTP/1.1" 200 OK
+INFO:     127.0.0.1:2332 - "GET /api/hierarchy/projects/3/packages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:2331 - "GET /api/users/?role=contractor HTTP/1.1" 200 OK
+INFO:     127.0.0.1:2333 - "GET /api/hierarchy/packages/2/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:6915 - "GET /api/hierarchy/projects/3/packages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:4420 - "GET /api/hierarchy/packages/2/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:4144 - "GET /api/hierarchy/structures/2/drawings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:4421 - "GET /api/notifications/structure-settings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:4145 - "GET /api/hierarchy/structures/3/drawings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:7057 - "GET /api/hierarchy/structures/2/drawings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:6766 - "GET /api/hierarchy/projects/2/packages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:6765 - "GET /api/hierarchy/structures/3/drawings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:6767 - "GET /api/hierarchy/projects/3/packages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:7409 - "GET /api/progress/dashboard-summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:14774 - "GET /api/hierarchy/packages/2/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:14776 - "GET /api/hierarchy/packages/4/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:14773 - "GET /api/hierarchy/packages/5/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:14775 - "GET /api/hierarchy/packages/3/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:3536 - "GET /api/progress/dashboard-summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:3537 - "GET /api/system/settings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:11654 - "GET /api/hierarchy/structures/2/drawings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:11655 - "GET /api/hierarchy/structures/3/drawings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:11653 - "GET /api/hierarchy/structures/4/drawings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:7013 - "GET /api/hierarchy/monitors/6/projects HTTP/1.1" 200 OK
+INFO:     127.0.0.1:7012 - "GET /api/system/settings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:4414 - "GET /api/hierarchy/projects/3/packages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:4415 - "GET /api/hierarchy/monitors/6/projects HTTP/1.1" 200 OK
+INFO:     127.0.0.1:4413 - "GET /api/hierarchy/projects/2/packages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:11667 - "GET /api/hierarchy/projects/2/packages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:5565 - "GET /api/hierarchy/projects/3/packages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:5568 - "GET /api/hierarchy/packages/3/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:5569 - "GET /api/hierarchy/packages/4/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:5566 - "GET /api/hierarchy/packages/5/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:5567 - "GET /api/hierarchy/packages/2/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:4154 - "GET /api/hierarchy/packages/2/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:4153 - "GET /api/hierarchy/packages/5/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:4151 - "GET /api/hierarchy/packages/3/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:4152 - "GET /api/hierarchy/packages/4/structures HTTP/1.1" 200 OK
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-09 18:09:00 +06)" (scheduled at 2026-05-09 18:08:00+06:00)
+INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
+INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-09 18:09:00 +06)" executed successfully
+INFO:     103.154.49.32:0 - "GET /api/notifications/web?unread_only=false HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/progress/dashboard-summary HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/notifications/web?unread_only=false HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/progress/dashboard-summary HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/system/settings HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/monitors/6/projects HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/system/settings HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/monitors/6/projects HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/projects/3/packages HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/projects/2/packages HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/projects/2/packages HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/projects/3/packages HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/packages/5/structures HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/packages/2/structures HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/packages/4/structures HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/packages/3/structures HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/packages/2/structures HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/packages/4/structures HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/packages/3/structures HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/packages/5/structures HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/library/ HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/monitors/6/projects HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/progress/rows HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/monitors/6/projects HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/projects/2/packages HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/projects/3/packages HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/projects/2/packages HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/projects/3/packages HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/packages/5/structures HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/packages/3/structures HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/packages/2/structures HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/packages/4/structures HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/library/ HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/progress/rows HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/packages/5/structures HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/packages/3/structures HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/packages/2/structures HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/packages/4/structures HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/structures/4/drawings HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/structures/3/drawings HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/structures/2/drawings HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/structures/3/drawings HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/structures/4/drawings HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/structures/2/drawings HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/drawings/7/pages HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/drawings/7/annotations?page_id=pdf:1 HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/monitors/6/projects HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/projects/3/packages HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/projects/2/packages HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/packages/5/structures HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/packages/3/structures HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/packages/2/structures HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/packages/4/structures HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/structures/2/drawings HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/structures/3/drawings HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/hierarchy/structures/4/drawings HTTP/1.1" 200 OK
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-09 18:10:00 +06)" (scheduled at 2026-05-09 18:09:00+06:00)
+INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
+INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-09 18:10:00 +06)" executed successfully
+INFO:     103.154.49.32:0 - "GET /api/system/settings HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "POST /api/progress/entries HTTP/1.1" 200 OK
+INFO:     103.154.49.32:0 - "GET /api/progress/rows HTTP/1.1" 200 OK
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-09 18:11:00 +06)" (scheduled at 2026-05-09 18:10:00+06:00)
+INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
+INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-09 18:11:00 +06)" executed successfully
+INFO:     127.0.0.1:2882 - "GET /api/library/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:2881 - "GET /api/hierarchy/monitors/6/projects HTTP/1.1" 200 OK
+INFO:     127.0.0.1:2884 - "GET /api/hierarchy/drawings/7/pages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:2883 - "GET /api/progress/rows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:4296 - "GET /api/library/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:5437 - "GET /api/hierarchy/monitors/6/projects HTTP/1.1" 200 OK
+INFO:     127.0.0.1:5438 - "GET /api/hierarchy/drawings/7/pages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:8363 - "GET /api/hierarchy/projects/2/packages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:8364 - "GET /api/hierarchy/projects/3/packages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:4895 - "GET /api/progress/rows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:14733 - "GET /api/hierarchy/drawings/7/annotations?page_id=pdf:6 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:4978 - "GET /api/hierarchy/projects/2/packages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:6772 - "GET /api/hierarchy/packages/5/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:6771 - "GET /api/hierarchy/projects/3/packages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:4806 - "GET /api/hierarchy/packages/2/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:4807 - "GET /api/hierarchy/packages/3/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:3102 - "GET /api/hierarchy/packages/4/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:6486 - "GET /api/hierarchy/drawings/7/annotations?page_id=pdf:6 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:4063 - "GET /api/hierarchy/packages/5/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:6222 - "GET /api/hierarchy/packages/2/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:6223 - "GET /api/hierarchy/packages/3/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:6224 - "GET /api/hierarchy/packages/4/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:5678 - "GET /api/hierarchy/structures/4/drawings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:4426 - "GET /api/hierarchy/structures/2/drawings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:8932 - "GET /api/hierarchy/structures/3/drawings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:4120 - "GET /api/hierarchy/structures/4/drawings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:2118 - "GET /api/hierarchy/structures/2/drawings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:2379 - "GET /api/hierarchy/structures/3/drawings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:12823 - "GET /api/system/settings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:6577 - "GET /api/hierarchy/monitors/6/projects HTTP/1.1" 200 OK
+INFO:     127.0.0.1:14087 - "GET /api/users/?role=contractor HTTP/1.1" 200 OK
+INFO:     127.0.0.1:14088 - "GET /api/hierarchy/projects/3/packages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:14089 - "GET /api/hierarchy/packages/2/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:8028 - "GET /api/hierarchy/packages/2/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:8026 - "GET /api/hierarchy/projects/3/packages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:8029 - "GET /api/hierarchy/structures/2/drawings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:8030 - "GET /api/hierarchy/structures/3/drawings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:8027 - "GET /api/notifications/structure-settings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:7295 - "GET /api/hierarchy/structures/2/drawings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:7296 - "GET /api/hierarchy/structures/3/drawings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:14586 - "GET /api/hierarchy/projects/2/packages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:14587 - "GET /api/hierarchy/projects/3/packages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:7733 - "GET /api/hierarchy/packages/5/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:7734 - "GET /api/hierarchy/packages/2/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:7736 - "GET /api/hierarchy/packages/4/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:7735 - "GET /api/hierarchy/packages/3/structures HTTP/1.1" 200 OK
+INFO:     127.0.0.1:12139 - "GET /api/hierarchy/structures/4/drawings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:13210 - "GET /api/hierarchy/structures/3/drawings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:13209 - "GET /api/hierarchy/structures/2/drawings HTTP/1.1" 200 OK

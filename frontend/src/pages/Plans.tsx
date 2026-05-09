@@ -38,6 +38,8 @@ import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { authService, hierarchyService, libraryService, progressService, systemService } from '../services/api';
 import ElementPresentationOverlay from '../components/ElementPresentationOverlay';
+import MediaPreviewDialog from '../components/MediaPreviewDialog';
+import ProgressMediaList from '../components/ProgressMediaList';
 
 GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
@@ -96,7 +98,7 @@ type ProgressRowInfo = {
 };
 type ProgressMediaItem = {
   file: File;
-  source: 'manual' | 'camera-photo' | 'camera-video';
+  source: string;
   capturedAt?: string | null;
   latitude?: number | null;
   longitude?: number | null;
@@ -506,6 +508,7 @@ export default function Plans() {
   const [progressCameraError, setProgressCameraError] = useState('');
   const [progressCameraLoading, setProgressCameraLoading] = useState(false);
   const [progressRecording, setProgressRecording] = useState(false);
+  const [progressPreviewItem, setProgressPreviewItem] = useState<ProgressMediaItem | null>(null);
   const [selectionStart, setSelectionStart] = useState<Point | null>(null);
   const [selectionBox, setSelectionBox] = useState<SelectionBox | null>(null);
   const [selectionToggleMode, setSelectionToggleMode] = useState(false);
@@ -542,11 +545,15 @@ export default function Plans() {
   const bulkStartDateInputRef = useRef<HTMLInputElement | null>(null);
   const selectedInfoStartDateInputRef = useRef<HTMLInputElement | null>(null);
   const progressUploadInputRef = useRef<HTMLInputElement | null>(null);
+  const progressNativePhotoInputRef = useRef<HTMLInputElement | null>(null);
+  const progressNativeVideoInputRef = useRef<HTMLInputElement | null>(null);
   const progressLiveVideoRef = useRef<HTMLVideoElement | null>(null);
   const progressStreamRef = useRef<MediaStream | null>(null);
   const progressMediaRecorderRef = useRef<MediaRecorder | null>(null);
   const progressMediaChunksRef = useRef<Blob[]>([]);
   const progressDiscardCameraResultRef = useRef(false);
+  const preferNativeProgressCapture = typeof window !== 'undefined'
+    && ((window.matchMedia?.('(pointer: coarse)').matches ?? false) || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || ''));
   const activeTouchPointsRef = useRef<Map<number, Point>>(new Map());
   const touchLongPressTimeoutRef = useRef<number | null>(null);
   const restoredViewportKeyRef = useRef('');
@@ -852,9 +859,36 @@ export default function Plans() {
     }
   };
 
+  const appendProgressCapturedFiles = async (files: FileList | null, source: 'camera-photo' | 'camera-video') => {
+    if (!files || files.length === 0) return;
+    const incoming = Array.from(files);
+    try {
+      await validateMediaFiles(incoming);
+      const captureContext = await resolveMandatoryCaptureContext();
+      if (!captureContext) return;
+      setProgressMediaFiles((current) => [
+        ...current,
+        ...incoming.map((file) => ({
+          file,
+          source,
+          capturedAt: captureContext.capturedAt,
+          latitude: captureContext.latitude,
+          longitude: captureContext.longitude,
+        })),
+      ]);
+    } catch (error: any) {
+      alert(error.message || 'Invalid media file.');
+    }
+  };
+
   const openProgressCameraCapture = async (mode: 'photo' | 'video') => {
     const locationAllowed = await ensureLocationPermissionForCapture();
     if (!locationAllowed) return;
+    if (preferNativeProgressCapture) {
+      if (mode === 'photo') progressNativePhotoInputRef.current?.click();
+      else progressNativeVideoInputRef.current?.click();
+      return;
+    }
     const cameraAllowed = await ensureCameraPermissionForCapture(mode);
     if (!cameraAllowed) return;
     progressDiscardCameraResultRef.current = false;
@@ -992,6 +1026,10 @@ export default function Plans() {
     } finally {
       setProgressSubmitting(false);
     }
+  };
+
+  const removeProgressMediaFile = (index: number) => {
+    setProgressMediaFiles((current) => current.filter((_, currentIndex) => currentIndex !== index));
   };
 
   useEffect(() => () => {
@@ -4400,6 +4438,22 @@ export default function Plans() {
                       </button>
                     </>
                   )}
+                  <input
+                    ref={progressNativePhotoInputRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="hidden"
+                    onChange={(e) => { void appendProgressCapturedFiles(e.target.files, 'camera-photo'); e.currentTarget.value = ''; }}
+                  />
+                  <input
+                    ref={progressNativeVideoInputRef}
+                    type="file"
+                    accept="video/*"
+                    capture="environment"
+                    className="hidden"
+                    onChange={(e) => { void appendProgressCapturedFiles(e.target.files, 'camera-video'); e.currentTarget.value = ''; }}
+                  />
                   <button
                     type="button"
                     onClick={() => { void openProgressCameraCapture('photo'); }}
@@ -4418,16 +4472,7 @@ export default function Plans() {
                   </button>
                 </div>
                 <p className="mt-2 text-xs font-medium text-slate-400">Multiple files allowed. Videos must be 2 minutes or shorter.</p>
-                {progressMediaFiles.length > 0 && (
-                  <div className="mt-3 space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                    {progressMediaFiles.map((item, index) => (
-                      <div key={`${item.file.name}-${index}`} className="text-sm font-bold text-slate-600">
-                        {item.file.name}
-                        {item.capturedAt && <span className="ml-2 text-xs font-semibold text-slate-400">captured {new Date(item.capturedAt).toLocaleString()}</span>}
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <ProgressMediaList items={progressMediaFiles} onPreview={setProgressPreviewItem} onRemove={removeProgressMediaFile} />
               </div>
             </div>
 
@@ -4454,24 +4499,24 @@ export default function Plans() {
       )}
 
       {progressCameraModalOpen && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 px-4">
-          <div className="max-h-[92dvh] w-full max-w-3xl overflow-y-auto rounded-[28px] border border-slate-200 bg-white p-4 shadow-2xl sm:p-6">
-            <div className="mb-5 flex items-start justify-between">
+        <div className="fixed inset-0 z-[120] bg-black">
+          <div className="flex h-full w-full flex-col bg-slate-950 text-white">
+            <div className="flex items-start justify-between gap-4 border-b border-white/10 px-4 py-3 sm:px-6">
               <div>
-                <h3 className="text-xl font-black tracking-tight text-slate-900 sm:text-2xl">
+                <h3 className="text-xl font-black tracking-tight text-white sm:text-2xl">
                   {progressCameraMode === 'photo' ? 'Take Photo' : 'Record Video'}
                 </h3>
-                <p className="mt-1 text-xs font-medium text-slate-500 sm:text-sm">
-                  Camera capture opens directly here and saves into today&apos;s progress evidence.
+                <p className="mt-1 text-xs font-medium text-white/65 sm:text-sm">
+                  Full-screen capture for desktop and tablet. Mobile devices use the native camera when available.
                 </p>
               </div>
-              <button onClick={closeProgressCameraModal} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+              <button onClick={closeProgressCameraModal} className="rounded-xl p-2 text-white/70 hover:bg-white/10 hover:text-white">
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-slate-950">
-              <div className="relative aspect-video w-full">
+            <div className="relative min-h-0 flex-1 overflow-hidden bg-black">
+              <div className="absolute inset-0">
                 <video ref={progressLiveVideoRef} autoPlay playsInline muted={progressCameraMode === 'photo'} className="h-full w-full object-cover" />
                 {progressCameraLoading && (
                   <div className="absolute inset-0 flex items-center justify-center bg-slate-950/60">
@@ -4486,11 +4531,11 @@ export default function Plans() {
               </div>
             </div>
 
-            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+            <div className="flex flex-col-reverse gap-3 border-t border-white/10 bg-slate-950/90 px-4 py-4 sm:flex-row sm:justify-end sm:px-6">
               <button
                 type="button"
                 onClick={closeProgressCameraModal}
-                className="rounded-2xl border border-slate-300 px-4 py-2.5 text-sm font-black text-slate-600 hover:bg-slate-50"
+                className="rounded-2xl border border-white/20 px-4 py-3 text-sm font-black text-white/80 hover:bg-white/10"
               >
                 Cancel
               </button>
@@ -4499,7 +4544,7 @@ export default function Plans() {
                   type="button"
                   onClick={() => { void captureProgressPhoto(); }}
                   disabled={progressCameraLoading || !!progressCameraError}
-                  className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-2.5 text-sm font-black text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white px-5 py-3 text-sm font-black text-slate-900 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Camera className="h-4 w-4" />
                   Capture Photo
@@ -4509,7 +4554,7 @@ export default function Plans() {
                   type="button"
                   onClick={() => { void toggleProgressVideoRecording(); }}
                   disabled={progressCameraLoading || !!progressCameraError}
-                  className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50 ${progressRecording ? 'bg-red-600 hover:bg-red-500' : 'bg-slate-900 hover:bg-slate-800'}`}
+                  className={`inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50 ${progressRecording ? 'bg-red-600 hover:bg-red-500' : 'bg-white text-slate-900 hover:bg-white/90'}`}
                 >
                   {progressRecording ? <Loader2 className="h-4 w-4 animate-spin" /> : <Video className="h-4 w-4" />}
                   {progressRecording ? 'Stop Recording' : 'Start Recording'}
@@ -4519,6 +4564,8 @@ export default function Plans() {
           </div>
         </div>
       )}
+
+      <MediaPreviewDialog item={progressPreviewItem} onClose={() => setProgressPreviewItem(null)} />
 
       {loading && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
