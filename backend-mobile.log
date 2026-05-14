@@ -1,7 +1,7 @@
 INFO:     Will watch for changes in these directories: ['D:\\CuringGuard']
 INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
-INFO:     Started reloader process [9440] using WatchFiles
-INFO:     Started server process [2412]
+INFO:     Started reloader process [15052] using WatchFiles
+INFO:     Started server process [8912]
 INFO:     Waiting for application startup.
 INFO:apscheduler.scheduler:Adding job tentatively -- it will be properly scheduled when the scheduler starts
 INFO:apscheduler.scheduler:Adding job tentatively -- it will be properly scheduled when the scheduler starts
@@ -10,131 +10,238 @@ INFO:apscheduler.scheduler:Added job "process_structure_notifications_job" to jo
 INFO:apscheduler.scheduler:Scheduler started
 INFO:backend.app.services.cron_service:Background Cron Scheduler started. Tasks scheduled for 8:00 AM daily and structure notifications every minute.
 INFO:     Application startup complete.
-INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-14 15:48:00 +06)" (scheduled at 2026-05-14 15:48:00+06:00)
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:00:00 +06)" (scheduled at 2026-05-15 02:00:00+06:00)
 INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
 INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
-INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-14 15:49:00 +06)" executed successfully
-INFO:     127.0.0.1:2627 - "POST /api/auth/login HTTP/1.1" 200 OK
-INFO:     127.0.0.1:2628 - "GET /api/progress/dashboard-summary HTTP/1.1" 200 OK
-INFO:     127.0.0.1:2629 - "GET /api/notifications/web?unread_only=false HTTP/1.1" 200 OK
-INFO:     127.0.0.1:3208 - "GET /api/progress/dashboard-summary HTTP/1.1" 200 OK
-INFO:     127.0.0.1:6950 - "GET /api/notifications/web?unread_only=false HTTP/1.1" 200 OK
-INFO:     127.0.0.1:6951 - "GET /api/system/settings HTTP/1.1" 200 OK
-INFO:     127.0.0.1:8074 - "GET /api/system/settings HTTP/1.1" 200 OK
-INFO:     127.0.0.1:9926 - "GET /api/hierarchy/monitors/6/projects HTTP/1.1" 200 OK
-INFO:     127.0.0.1:13264 - "GET /api/hierarchy/monitors/6/projects HTTP/1.1" 200 OK
-INFO:     127.0.0.1:13266 - "GET /api/hierarchy/projects/2/packages HTTP/1.1" 200 OK
-INFO:     127.0.0.1:13265 - "GET /api/hierarchy/projects/3/packages HTTP/1.1" 200 OK
-INFO:     127.0.0.1:12266 - "GET /api/hierarchy/projects/2/packages HTTP/1.1" 200 OK
-INFO:     127.0.0.1:12269 - "GET /api/hierarchy/packages/2/structures HTTP/1.1" 200 OK
-INFO:     127.0.0.1:12268 - "GET /api/hierarchy/packages/5/structures HTTP/1.1" 200 OK
-INFO:     127.0.0.1:12271 - "GET /api/hierarchy/packages/4/structures HTTP/1.1" 200 OK
-INFO:     127.0.0.1:12267 - "GET /api/hierarchy/projects/3/packages HTTP/1.1" 200 OK
-INFO:     127.0.0.1:12270 - "GET /api/hierarchy/packages/3/structures HTTP/1.1" 200 OK
-INFO:     127.0.0.1:1037 - "GET /api/hierarchy/packages/5/structures HTTP/1.1" 200 OK
-INFO:     127.0.0.1:1042 - "GET /api/hierarchy/packages/4/structures HTTP/1.1" 200 OK
-INFO:     127.0.0.1:1041 - "GET /api/hierarchy/packages/3/structures HTTP/1.1" 200 OK
-INFO:     127.0.0.1:1040 - "GET /api/hierarchy/packages/2/structures HTTP/1.1" 200 OK
-INFO:     127.0.0.1:2646 - "GET /api/hierarchy/monitors/6/projects HTTP/1.1" 200 OK
-INFO:     127.0.0.1:10943 - "GET /api/hierarchy/drawings/7/pages HTTP/1.1" 200 OK
-INFO:     127.0.0.1:10944 - "GET /api/progress/rows HTTP/1.1" 200 OK
-INFO:     127.0.0.1:10945 - "GET /api/hierarchy/monitors/6/projects HTTP/1.1" 200 OK
-INFO:     127.0.0.1:10942 - "GET /api/library/ HTTP/1.1" 200 OK
-INFO:     127.0.0.1:4834 - "GET /api/hierarchy/projects/3/packages HTTP/1.1" 200 OK
-INFO:     127.0.0.1:4833 - "GET /api/hierarchy/projects/2/packages HTTP/1.1" 200 OK
-INFO:     127.0.0.1:3778 - "GET /api/hierarchy/drawings/7/pages HTTP/1.1" 200 OK
-INFO:     127.0.0.1:8388 - "GET /api/library/ HTTP/1.1" 200 OK
-INFO:     127.0.0.1:3779 - "GET /api/progress/rows HTTP/1.1" 200 OK
-INFO:     127.0.0.1:10118 - "GET /api/hierarchy/projects/3/packages HTTP/1.1" 200 OK
-INFO:     127.0.0.1:10119 - "GET /api/hierarchy/projects/2/packages HTTP/1.1" 200 OK
-INFO:     127.0.0.1:11956 - "GET /api/hierarchy/packages/5/structures HTTP/1.1" 200 OK
-INFO:     127.0.0.1:3106 - "GET /api/hierarchy/packages/3/structures HTTP/1.1" 200 OK
-INFO:     127.0.0.1:10117 - "GET /api/hierarchy/drawings/7/file HTTP/1.1" 200 OK
-INFO:     127.0.0.1:3105 - "GET /api/hierarchy/packages/2/structures HTTP/1.1" 200 OK
-INFO:     127.0.0.1:10722 - "GET /api/hierarchy/packages/4/structures HTTP/1.1" 200 OK
-INFO:     127.0.0.1:3018 - "GET /api/hierarchy/packages/5/structures HTTP/1.1" 200 OK
-INFO:     127.0.0.1:12837 - "GET /api/hierarchy/packages/4/structures HTTP/1.1" 200 OK
-INFO:     127.0.0.1:12835 - "GET /api/hierarchy/packages/3/structures HTTP/1.1" 200 OK
-INFO:     127.0.0.1:12836 - "GET /api/hierarchy/packages/2/structures HTTP/1.1" 200 OK
-INFO:     127.0.0.1:14851 - "GET /api/hierarchy/structures/2/drawings HTTP/1.1" 200 OK
-INFO:     127.0.0.1:12838 - "GET /api/hierarchy/structures/4/drawings HTTP/1.1" 200 OK
-INFO:     127.0.0.1:6901 - "GET /api/hierarchy/structures/3/drawings HTTP/1.1" 200 OK
-INFO:     127.0.0.1:10006 - "GET /api/hierarchy/structures/2/drawings HTTP/1.1" 200 OK
-INFO:     127.0.0.1:10005 - "GET /api/hierarchy/drawings/7/annotations?page_id=pdf:3 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:5382 - "GET /api/hierarchy/structures/3/drawings HTTP/1.1" 200 OK
-INFO:     127.0.0.1:5383 - "GET /api/hierarchy/structures/4/drawings HTTP/1.1" 200 OK
-INFO:     127.0.0.1:12431 - "GET /api/hierarchy/drawings/7/annotations?page_id=pdf:3 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:9882 - "GET /api/hierarchy/drawings/7/annotations?page_id=pdf:9 HTTP/1.1" 200 OK
-INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-14 15:50:00 +06)" (scheduled at 2026-05-14 15:49:00+06:00)
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:01:00 +06)" executed successfully
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:02:00 +06)" (scheduled at 2026-05-15 02:01:00+06:00)
 INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
 INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
-INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-14 15:50:00 +06)" executed successfully
-INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-14 15:51:00 +06)" (scheduled at 2026-05-14 15:50:00+06:00)
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:02:00 +06)" executed successfully
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:03:00 +06)" (scheduled at 2026-05-15 02:02:00+06:00)
 INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
 INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
-INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-14 15:51:00 +06)" executed successfully
-INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-14 15:52:00 +06)" (scheduled at 2026-05-14 15:51:00+06:00)
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:03:00 +06)" executed successfully
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:04:00 +06)" (scheduled at 2026-05-15 02:03:00+06:00)
 INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
 INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
-INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-14 15:52:00 +06)" executed successfully
-INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-14 15:53:00 +06)" (scheduled at 2026-05-14 15:52:00+06:00)
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:04:00 +06)" executed successfully
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:05:00 +06)" (scheduled at 2026-05-15 02:04:00+06:00)
 INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
 INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
-INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-14 15:53:00 +06)" executed successfully
-INFO:     127.0.0.1:10167 - "POST /api/hierarchy/drawings/7/pages/pdf%3A9/calibrations HTTP/1.1" 200 OK
-INFO:     127.0.0.1:3298 - "GET /api/hierarchy/drawings/7/annotations?page_id=pdf:9 HTTP/1.1" 200 OK
-INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-14 15:54:00 +06)" (scheduled at 2026-05-14 15:53:00+06:00)
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:05:00 +06)" executed successfully
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:06:00 +06)" (scheduled at 2026-05-15 02:05:00+06:00)
 INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
 INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
-INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-14 15:54:00 +06)" executed successfully
-INFO:     127.0.0.1:6059 - "POST /api/hierarchy/drawings/7/annotations HTTP/1.1" 200 OK
-INFO:     127.0.0.1:8593 - "GET /api/progress/rows HTTP/1.1" 200 OK
-INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-14 15:55:00 +06)" (scheduled at 2026-05-14 15:54:00+06:00)
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:06:00 +06)" executed successfully
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:07:00 +06)" (scheduled at 2026-05-15 02:06:00+06:00)
 INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
 INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
-INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-14 15:55:00 +06)" executed successfully
-INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-14 15:56:00 +06)" (scheduled at 2026-05-14 15:55:00+06:00)
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:07:00 +06)" executed successfully
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:08:00 +06)" (scheduled at 2026-05-15 02:07:00+06:00)
 INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
 INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
-INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-14 15:56:00 +06)" executed successfully
-INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-14 15:57:00 +06)" (scheduled at 2026-05-14 15:56:00+06:00)
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:08:00 +06)" executed successfully
+WARNING:  WatchFiles detected changes in 'backend\app\models\users.py'. Reloading...
+ INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:09:00 +06)" (scheduled at 2026-05-15 02:08:00+06:00)
 INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
 INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
-INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-14 15:57:00 +06)" executed successfully
-WARNING:apscheduler.executors.default:Run time of job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-14 17:05:00 +06)" was missed by 0:00:13.586858
-INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-14 17:06:00 +06)" (scheduled at 2026-05-14 17:05:00+06:00)
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:09:00 +06)" executed successfully
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:10:00 +06)" (scheduled at 2026-05-15 02:09:00+06:00)
 INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
 INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
-INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-14 17:06:00 +06)" executed successfully
-INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-14 17:07:00 +06)" (scheduled at 2026-05-14 17:06:00+06:00)
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:10:00 +06)" executed successfully
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [8912]
+WARNING:  WatchFiles detected changes in 'backend\app\routers\auth.py', 'backend\app\schemas\auth.py'. Reloading...
+ INFO:     Started server process [8248]
+INFO:     Waiting for application startup.
+INFO:apscheduler.scheduler:Adding job tentatively -- it will be properly scheduled when the scheduler starts
+INFO:apscheduler.scheduler:Adding job tentatively -- it will be properly scheduled when the scheduler starts
+INFO:apscheduler.scheduler:Added job "check_curing_status_and_notify" to job store "default"
+INFO:apscheduler.scheduler:Added job "process_structure_notifications_job" to job store "default"
+INFO:apscheduler.scheduler:Scheduler started
+INFO:backend.app.services.cron_service:Background Cron Scheduler started. Tasks scheduled for 8:00 AM daily and structure notifications every minute.
+INFO:     Application startup complete.
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [8248]
+INFO:     Started server process [15988]
+INFO:     Waiting for application startup.
+INFO:apscheduler.scheduler:Adding job tentatively -- it will be properly scheduled when the scheduler starts
+INFO:apscheduler.scheduler:Adding job tentatively -- it will be properly scheduled when the scheduler starts
+INFO:apscheduler.scheduler:Added job "check_curing_status_and_notify" to job store "default"
+INFO:apscheduler.scheduler:Added job "process_structure_notifications_job" to job store "default"
+INFO:apscheduler.scheduler:Scheduler started
+INFO:backend.app.services.cron_service:Background Cron Scheduler started. Tasks scheduled for 8:00 AM daily and structure notifications every minute.
+INFO:     Application startup complete.
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:10:00 +06)" (scheduled at 2026-05-15 02:10:00+06:00)
 INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
 INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
-INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-14 17:07:00 +06)" executed successfully
-INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-14 17:08:00 +06)" (scheduled at 2026-05-14 17:07:00+06:00)
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:11:00 +06)" executed successfully
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:12:00 +06)" (scheduled at 2026-05-15 02:11:00+06:00)
 INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
 INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
-INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-14 17:08:00 +06)" executed successfully
-INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-14 17:09:00 +06)" (scheduled at 2026-05-14 17:08:00+06:00)
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:12:00 +06)" executed successfully
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:13:00 +06)" (scheduled at 2026-05-15 02:12:00+06:00)
 INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
 INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
-INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-14 17:09:00 +06)" executed successfully
-INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-14 17:10:00 +06)" (scheduled at 2026-05-14 17:09:00+06:00)
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:13:00 +06)" executed successfully
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:14:00 +06)" (scheduled at 2026-05-15 02:13:00+06:00)
 INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
 INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
-INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-14 17:10:00 +06)" executed successfully
-INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-14 17:11:00 +06)" (scheduled at 2026-05-14 17:10:00+06:00)
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:14:00 +06)" executed successfully
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:15:00 +06)" (scheduled at 2026-05-15 02:14:00+06:00)
 INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
 INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
-INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-14 17:11:00 +06)" executed successfully
-INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-14 17:12:00 +06)" (scheduled at 2026-05-14 17:11:00+06:00)
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:15:00 +06)" executed successfully
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:16:00 +06)" (scheduled at 2026-05-15 02:15:00+06:00)
 INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
 INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
-INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-14 17:12:00 +06)" executed successfully
-INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-14 17:13:00 +06)" (scheduled at 2026-05-14 17:12:00+06:00)
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:16:00 +06)" executed successfully
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:17:00 +06)" (scheduled at 2026-05-15 02:16:00+06:00)
 INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
 INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
-INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-14 17:13:00 +06)" executed successfully
-INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-14 17:14:00 +06)" (scheduled at 2026-05-14 17:13:00+06:00)
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:17:00 +06)" executed successfully
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:18:00 +06)" (scheduled at 2026-05-15 02:17:00+06:00)
 INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
 INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
-INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-14 17:14:00 +06)" executed successfully
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:18:00 +06)" executed successfully
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:19:00 +06)" (scheduled at 2026-05-15 02:18:00+06:00)
+INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
+INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:19:00 +06)" executed successfully
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:20:00 +06)" (scheduled at 2026-05-15 02:19:00+06:00)
+INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
+INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:20:00 +06)" executed successfully
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:21:00 +06)" (scheduled at 2026-05-15 02:20:00+06:00)
+INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
+INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:21:00 +06)" executed successfully
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:22:00 +06)" (scheduled at 2026-05-15 02:21:00+06:00)
+INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
+INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:22:00 +06)" executed successfully
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:23:00 +06)" (scheduled at 2026-05-15 02:22:00+06:00)
+INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
+INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:23:00 +06)" executed successfully
+INFO:     127.0.0.1:4631 - "POST /api/auth/forgot-password/request HTTP/1.1" 200 OK
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:24:00 +06)" (scheduled at 2026-05-15 02:23:00+06:00)
+INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
+INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:24:00 +06)" executed successfully
+INFO:     127.0.0.1:2849 - "POST /api/auth/forgot-password/verify HTTP/1.1" 500 Internal Server Error
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:25:00 +06)" (scheduled at 2026-05-15 02:24:00+06:00)
+INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
+INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:25:00 +06)" executed successfully
+WARNING:  WatchFiles detected changes in 'backend\app\routers\auth.py'. Reloading...
+ INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:26:00 +06)" (scheduled at 2026-05-15 02:25:00+06:00)
+INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
+INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:26:00 +06)" executed successfully
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:27:00 +06)" (scheduled at 2026-05-15 02:26:00+06:00)
+INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
+INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:27:00 +06)" executed successfully
+INFO:     127.0.0.1:4437 - "POST /api/auth/forgot-password/request HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:4442 - "POST /api/auth/forgot-password/request HTTP/1.1" 200 OK
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:28:00 +06)" (scheduled at 2026-05-15 02:27:00+06:00)
+INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
+INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:28:00 +06)" executed successfully
+INFO:     127.0.0.1:4448 - "POST /api/auth/forgot-password/verify HTTP/1.1" 500 Internal Server Error
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:29:00 +06)" (scheduled at 2026-05-15 02:28:00+06:00)
+INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
+INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:29:00 +06)" executed successfully
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:30:00 +06)" (scheduled at 2026-05-15 02:29:00+06:00)
+INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
+INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:30:00 +06)" executed successfully
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:31:00 +06)" (scheduled at 2026-05-15 02:30:00+06:00)
+INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
+INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:31:00 +06)" executed successfully
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:32:00 +06)" (scheduled at 2026-05-15 02:31:00+06:00)
+INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
+INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:32:00 +06)" executed successfully
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:33:00 +06)" (scheduled at 2026-05-15 02:32:00+06:00)
+INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
+INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:33:00 +06)" executed successfully
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:34:00 +06)" (scheduled at 2026-05-15 02:33:00+06:00)
+INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
+INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:34:00 +06)" executed successfully
+INFO:     127.0.0.1:1592 - "POST /api/auth/forgot-password/request HTTP/1.1" 200 OK
+INFO:     127.0.0.1:9051 - "POST /api/auth/forgot-password/verify HTTP/1.1" 500 Internal Server Error
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:35:00 +06)" (scheduled at 2026-05-15 02:34:00+06:00)
+INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
+INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:35:00 +06)" executed successfully
+INFO:     127.0.0.1:14014 - "POST /api/auth/forgot-password/verify HTTP/1.1" 500 Internal Server Error
+INFO:     127.0.0.1:1275 - "POST /api/auth/forgot-password/verify HTTP/1.1" 500 Internal Server Error
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:36:00 +06)" (scheduled at 2026-05-15 02:35:00+06:00)
+INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
+INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:36:00 +06)" executed successfully
+INFO:     127.0.0.1:14922 - "GET /openapi.json HTTP/1.1" 200 OK
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:37:00 +06)" (scheduled at 2026-05-15 02:36:00+06:00)
+INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
+INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:37:00 +06)" executed successfully
+INFO:     127.0.0.1:1286 - "POST /api/auth/forgot-password/request HTTP/1.1" 200 OK
+INFO:     127.0.0.1:1291 - "POST /api/auth/forgot-password/verify HTTP/1.1" 500 Internal Server Error
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:38:00 +06)" (scheduled at 2026-05-15 02:37:00+06:00)
+INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
+INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:38:00 +06)" executed successfully
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:39:00 +06)" (scheduled at 2026-05-15 02:38:00+06:00)
+INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
+INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:39:00 +06)" executed successfully
+INFO:     127.0.0.1:4996 - "POST /api/auth/forgot-password/request HTTP/1.1" 200 OK
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:40:00 +06)" (scheduled at 2026-05-15 02:39:00+06:00)
+INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
+INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:40:00 +06)" executed successfully
+INFO:     127.0.0.1:5016 - "POST /api/auth/forgot-password/verify HTTP/1.1" 500 Internal Server Error
+INFO:     127.0.0.1:8036 - "GET /openapi.json HTTP/1.1" 200 OK
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:41:00 +06)" (scheduled at 2026-05-15 02:40:00+06:00)
+INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
+INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:41:00 +06)" executed successfully
+INFO:     127.0.0.1:8060 - "POST /api/auth/forgot-password/request HTTP/1.1" 200 OK
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:42:00 +06)" (scheduled at 2026-05-15 02:41:00+06:00)
+INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
+INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:42:00 +06)" executed successfully
+INFO:     127.0.0.1:8085 - "GET /openapi.json HTTP/1.1" 200 OK
+INFO:     127.0.0.1:8088 - "POST /api/auth/forgot-password/verify HTTP/1.1" 500 Internal Server Error
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:43:00 +06)" (scheduled at 2026-05-15 02:42:00+06:00)
+INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
+INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:43:00 +06)" executed successfully
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:44:00 +06)" (scheduled at 2026-05-15 02:43:00+06:00)
+INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
+INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:44:00 +06)" executed successfully
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:45:00 +06)" (scheduled at 2026-05-15 02:44:00+06:00)
+INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
+INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:45:00 +06)" executed successfully
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:46:00 +06)" (scheduled at 2026-05-15 02:45:00+06:00)
+INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
+INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:46:00 +06)" executed successfully
+INFO:apscheduler.executors.default:Running job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:47:00 +06)" (scheduled at 2026-05-15 02:46:00+06:00)
+INFO:backend.app.services.cron_service:Executing Notification Cron Job: Checking scheduled SMS and daily web reminders...
+INFO:backend.app.services.cron_service:Notification Cron Job completed successfully.
+INFO:apscheduler.executors.default:Job "process_structure_notifications_job (trigger: cron[minute='*'], next run at: 2026-05-15 02:47:00 +06)" executed successfully

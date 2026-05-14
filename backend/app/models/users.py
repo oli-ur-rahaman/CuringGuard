@@ -34,3 +34,19 @@ class User(Base):
         if not re.match(r"^\d{11}$", mobile_number):
             raise ValueError(f"CRITICAL: User mobile number '{mobile_number}' is invalid. It must be exactly 11 digits to ensure Green Heritage IT SMS delivery does not crash.")
         return mobile_number
+
+
+class PasswordResetOtpSession(Base):
+    __tablename__ = "password_reset_otp_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    mobile_number = Column(String(11), nullable=False, index=True)
+    otp_hash = Column(String(255), nullable=False)
+    reset_token_hash = Column(String(255), nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    verified_at = Column(DateTime(timezone=True), nullable=True)
+    consumed_at = Column(DateTime(timezone=True), nullable=True)
+    attempts = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())

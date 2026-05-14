@@ -1,0 +1,21 @@
+- generic [ref=e4]:
+  - generic [ref=e5]:
+    - img "CuringGuard Logo" [ref=e6]
+    - heading "CuringGuard" [level=1] [ref=e7]
+  - generic [ref=e9]:
+    - generic [ref=e10]:
+      - generic [ref=e11]: Username / ID
+      - generic [ref=e12]:
+        - textbox "Enter your root ID" [ref=e13]
+        - img [ref=e14]
+    - generic [ref=e17]:
+      - generic [ref=e18]: Master Password
+      - generic [ref=e19]:
+        - textbox "••••••••" [ref=e20]
+        - img [ref=e21]
+        - button [ref=e24]:
+          - img [ref=e25]
+    - button "AUTHENTICATE ACCESS" [ref=e28]
+    - generic [ref=e29]:
+      - button "Sign up" [ref=e30]
+      - button "Forgot password?" [ref=e31]

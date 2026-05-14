@@ -56,6 +56,27 @@ export const authService = {
     }
     return response.data;
   },
+  requestPasswordResetOtp: async (username: string, mobileNumber: string) => {
+    const response = await api.post('/auth/forgot-password/request', { username, mobile_number: mobileNumber });
+    return response.data as { request_id: number; message: string };
+  },
+  verifyPasswordResetOtp: async (requestId: number, mobileNumber: string, otp: string) => {
+    const response = await api.post('/auth/forgot-password/verify', {
+      request_id: requestId,
+      mobile_number: mobileNumber,
+      otp,
+    });
+    return response.data as { reset_token: string; message: string };
+  },
+  resetPasswordWithOtp: async (requestId: number, mobileNumber: string, resetToken: string, newPassword: string) => {
+    const response = await api.post('/auth/forgot-password/reset', {
+      request_id: requestId,
+      mobile_number: mobileNumber,
+      reset_token: resetToken,
+      new_password: newPassword,
+    });
+    return response.data as { status: string; message: string };
+  },
   logout: () => {
     localStorage.removeItem('token');
     window.location.href = '/login';
